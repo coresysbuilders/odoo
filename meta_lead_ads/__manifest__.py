@@ -5,8 +5,8 @@
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
 {
-    'name': 'Meta Lead Ads Integration',
-    'version': '18.0.13.3.2',
+    'name': 'Facebook Lead Ads to CRM',
+    'version': '18.0.13.3.3',
     'category': 'Sales/CRM',
     'license': 'OPL-1',
     'summary': 'Ingest Meta (Facebook/Instagram) Lead Ads into Odoo CRM',
