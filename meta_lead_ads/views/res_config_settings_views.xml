@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!--
+        The dedicated "Meta Lead Ads" Settings section.
+
+        A single inherit of base.res_config_settings_view_form injecting an
+        <app name="meta_lead_ads"> whose name must equal the {'module':
+        'meta_lead_ads'} context of meta_config_settings_action, otherwise the
+        section will not render.
+
+        Security: groups= is placed on the <app> and on every <block>. On Odoo 18
+        a groups=-gated field read raises AccessError, so the whole gated subtree
+        is stripped from the resolved arch for a non-admin user — the security
+        tests rely on this (lead_name_template + meta_lead_ads present for the
+        admin arch, absent otherwise). This view gate is the UI layer only; the
+        authoritative gate for the sudo mutators (set_values,
+        action_retro_rename_meta_leads) is the in-method has_group check in
+        res_config_settings.py — both are present by design.
+
+        logo= points at static/description/icon.png (the square CoreSys app icon)
+        so the section shows its icon in the Settings left sidebar, matching the
+        stock apps. (static/description/cover.jpg is the wide description-page
+        cover, not used here.) Omitting logo= leaves the sidebar entry icon-less;
+        the path is served from disk.
+
+        Odoo 18 syntax only: app/block/setting tags, no legacy settings-block div
+        wrapper, inline groups=/readonly=, no legacy attrs or states attributes,
+        list tag never the old tree tag.
+    -->
+    <record id="res_config_settings_view_form_meta" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.meta.lead.ads</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="Meta Lead Ads" name="meta_lead_ads"
+                     logo="/meta_lead_ads/static/description/icon.png"
+                     groups="meta_lead_ads.group_meta_admin">
+
+                    <block title="Connection" name="meta_connection_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Connect to Meta"
+                                 help="Launch the onboarding wizard to connect a Meta App, select pages and import lead forms.">
+                            <button name="%(meta_onboarding_action)d" type="action"
+                                    string="Connect to Meta" class="btn-primary"/>
+                        </setting>
+                        <setting string="Connection status"
+                                 help="Best-of status across active Meta accounts. Token-free — never shows the App Secret or access token.">
+                            <field name="meta_connection_status" widget="badge" readonly="1"
+                                   decoration-success="meta_connection_status == 'lead_retrieval_granted'"
+                                   decoration-warning="meta_connection_status == 'dev_test_only'"
+                                   decoration-danger="meta_connection_status == 'auth_failed'"/>
+                        </setting>
+                    </block>
+
+                    <block title="Configuration" name="meta_config_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Accounts"
+                                 help="Open the Meta accounts list (tokens, pages, status).">
+                            <button name="%(meta_account_action)d" type="action"
+                                    string="Open Accounts" class="btn-link"/>
+                        </setting>
+                        <setting string="Sync Logs"
+                                 help="Open the ingestion / sync log list.">
+                            <button name="%(meta_sync_log_action)d" type="action"
+                                    string="Open Sync Logs" class="btn-link"/>
+                        </setting>
+                        <setting string="Field Mappings"
+                                 help="Open the field-mapping list — a global entry point to the per-form mapping rows.">
+                            <button name="%(meta_field_mapping_action)d" type="action"
+                                    string="Open Field Mappings" class="btn-link"/>
+                        </setting>
+                    </block>
+
+                    <block title="Lead naming" name="meta_naming_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Lead title template"
+                                 help="Valid tokens: {form_name} {campaign_name} {adset_name} {ad_name} {contact_name} {page_name} {date}. Unknown or malformed tokens block Save.">
+                            <field name="lead_name_template"/>
+                            <div class="text-muted mt8">
+                                Preview:
+                                <field name="lead_name_preview" readonly="1" nolabel="1"/>
+                            </div>
+                        </setting>
+                        <setting string="Re-apply to existing leads"
+                                 help="Re-title existing Meta leads still using a generated title. Templates containing {date} are skipped (no trusted Meta create-date).">
+                            <button name="action_retro_rename_meta_leads" type="object"
+                                    string="Re-apply to existing Meta leads" class="btn-secondary"/>
+                        </setting>
+                    </block>
+
+                    <block title="Notifications" name="meta_notify_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Notify on new lead"
+                                 help="When a new lead arrives from Meta, notify either a specific user or every active member of a role in their Discuss inbox.">
+                            <field name="meta_notify_enabled"/>
+                            <div class="content-group mt16" invisible="not meta_notify_enabled">
+                                <field name="meta_notify_target_type" widget="radio"/>
+                                <field name="meta_notify_user_id"
+                                       invisible="meta_notify_target_type != 'user'"
+                                       required="meta_notify_enabled and meta_notify_target_type == 'user'"
+                                       options="{'no_create': True}"/>
+                                <field name="meta_notify_group_id"
+                                       invisible="meta_notify_target_type != 'group'"
+                                       required="meta_notify_enabled and meta_notify_target_type == 'group'"
+                                       options="{'no_create': True}"/>
+                            </div>
+                        </setting>
+                    </block>
+
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

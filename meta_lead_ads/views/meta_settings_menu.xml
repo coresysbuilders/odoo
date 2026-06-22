@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!--
+        The Settings entry points plus the upgrade-safe menu removal.
+
+        This file loads after views/meta_menus.xml and
+        wizard/meta_onboarding_views.xml. Their <menuitem> source definitions were
+        removed so they are never recreated on upgrade; the three
+        <delete model="ir.ui.menu"> records below then drop the existing DB rows
+        on upgrade. We delete them explicitly rather than relying on the implicit
+        drop that follows removing the XML, since that behaviour is unreliable.
+        The deleted ids still resolve because the records were declared in earlier
+        files in the same module/upgrade transaction.
+
+        res_config_settings_views.xml (the <app> form) loads after this file so
+        its %(...)d button references to meta_field_mapping_action and
+        meta_config_settings_action resolve at view-parse time.
+    -->
+
+    <!-- 1. Global entry point to the per-form meta.field.mapping model.
+         Otherwise the model is only reachable via mapping_ids; this gives it a
+         global Settings entry point (full CRUD, reusing the existing list/form).
+         No model change — form_id stays required. -->
+    <record id="meta_field_mapping_action" model="ir.actions.act_window">
+        <field name="name">Field Mappings</field>
+        <field name="res_model">meta.field.mapping</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- 2. The Settings act_window. target=inline + context module key must equal
+         the <app name="..."> in res_config_settings_views.xml, otherwise the
+         section will not render. -->
+    <record id="meta_config_settings_action" model="ir.actions.act_window">
+        <field name="name">Meta Lead Ads Settings</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module': 'meta_lead_ads'}</field>
+    </record>
+
+    <!-- 3. Admin-gated Settings menuitem under the technical Settings root. -->
+    <menuitem id="menu_meta_config_settings"
+              name="Meta Lead Ads"
+              parent="base.menu_administration"
+              action="meta_config_settings_action"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="50"/>
+
+    <!-- 4. Upgrade-safe menu removal. Removing the <menuitem> XML alone does not
+         reliably drop the DB rows on upgrade; these explicit <delete> records
+         guarantee the existing ir.ui.menu rows are unlinked. The act_window
+         actions they pointed at are kept (they back the Settings hub buttons).
+         The id= form is the most reliable for module-owned records on upgrade. -->
+    <delete model="ir.ui.menu" id="menu_meta_accounts"/>
+    <delete model="ir.ui.menu" id="menu_meta_sync_log"/>
+    <delete model="ir.ui.menu" id="menu_meta_connect"/>
+</odoo>

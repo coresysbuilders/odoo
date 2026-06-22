@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <record id="meta_onboarding_view_form" model="ir.ui.view">
+        <field name="name">meta.onboarding.form</field>
+        <field name="model">meta.onboarding</field>
+        <field name="arch" type="xml">
+            <form string="Connect to Meta">
+                <field name="state" invisible="1"/>
+                <group invisible="state != 'credentials'">
+                    <field name="app_id"/>
+                    <field name="app_secret" password="True"/>
+                    <field name="access_token" password="True"/>
+                    <field name="exchange_short_lived"/>
+                </group>
+                <group invisible="state != 'pages'">
+                    <field name="access_status" readonly="1"/>
+                    <field name="page_line_ids">
+                        <list editable="bottom" create="false">
+                            <field name="selected" widget="boolean_toggle"/>
+                            <field name="name" readonly="1"/>
+                            <field name="page_id" readonly="1"/>
+                        </list>
+                    </field>
+                </group>
+                <group invisible="state != 'forms'">
+                    <field name="form_line_ids">
+                        <list create="false" edit="false">
+                            <field name="page_id"/>
+                            <field name="name"/>
+                            <field name="form_id"/>
+                        </list>
+                    </field>
+                </group>
+                <div class="alert alert-success" role="alert"
+                     invisible="state != 'done'">
+                    Connection saved. Pages and lead forms have been imported.
+                </div>
+                <!-- Per-page webhook subscription control plus the read-only
+                     verify_token / URL surface. The whole wizard is Meta
+                     Admin-only (menu + ACL), so the verify_token is only ever
+                     shown to an admin. -->
+                <group invisible="state != 'done'">
+                    <group string="Webhook Subscription">
+                        <field name="page_id"/>
+                        <field name="subscription_state" widget="badge"/>
+                    </group>
+                    <group string="Paste into Meta App → Webhooks → Page → leadgen">
+                        <field name="webhook_url" readonly="1"/>
+                        <field name="webhook_verify_token" readonly="1"/>
+                    </group>
+                </group>
+                <footer>
+                    <button name="action_validate" string="Validate &amp; Discover"
+                            type="object" class="btn-primary"
+                            invisible="state != 'credentials'"/>
+                    <button name="action_discover_forms" string="Next"
+                            type="object" class="btn-primary"
+                            invisible="state != 'pages'"/>
+                    <button name="action_commit" string="Finish"
+                            type="object" class="btn-primary"
+                            invisible="state != 'forms'"/>
+                    <button name="action_subscribe_page" string="Subscribe"
+                            type="object" class="btn-primary"
+                            invisible="state != 'done' or subscription_state == 'subscribed'"/>
+                    <button name="action_unsubscribe_page" string="Unsubscribe"
+                            type="object" class="btn-secondary"
+                            invisible="state != 'done' or subscription_state != 'subscribed'"/>
+                    <button string="Close" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- meta_onboarding_action is kept — the Settings "Connect to Meta" button
+         (res_config_settings_views.xml) reuses it. The standalone Connect
+         menuitem was dropped in favour of the single Settings home; its existing
+         DB row is unlinked on upgrade by the explicit ir.ui.menu delete record in
+         views/meta_settings_menu.xml. -->
+    <record id="meta_onboarding_action" model="ir.actions.act_window">
+        <field name="name">Connect to Meta</field>
+        <field name="res_model">meta.onboarding</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <record id="meta_account_view_list" model="ir.ui.view">
+        <field name="name">meta.account.list</field>
+        <field name="model">meta.account</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="account_id"/>
+                <field name="page_count"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="meta_account_view_form" model="ir.ui.view">
+        <field name="name">meta.account.form</field>
+        <field name="model">meta.account</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button type="object" name="action_test_connection"
+                            string="Test Connection" class="btn-primary"
+                            groups="meta_lead_ads.group_meta_admin"/>
+                    <button type="object" name="action_check_scheduler"
+                            string="Check Scheduler"
+                            groups="meta_lead_ads.group_meta_admin"/>
+                    <field name="access_status" widget="badge" readonly="1"
+                           decoration-success="access_status == 'lead_retrieval_granted'"
+                           decoration-warning="access_status == 'dev_test_only'"
+                           decoration-danger="access_status == 'auth_failed'"/>
+                    <field name="cron_status" widget="badge"
+                           decoration-success="cron_status == 'ok'"
+                           decoration-warning="cron_status == 'pending'"
+                           decoration-danger="cron_status in ('stalled', 'disabled')"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button type="object" name="action_open_pages"
+                                class="oe_stat_button" icon="fa-flag">
+                            <field name="page_count" widget="statinfo" string="Pages"/>
+                        </button>
+                    </div>
+                    <group>
+                        <field name="name"/>
+                        <field name="account_id"/>
+                        <field name="active"/>
+                    </group>
+                    <group string="Credentials" groups="meta_lead_ads.group_meta_admin">
+                        <field name="app_id"/>
+                        <field name="app_secret" password="True"/>
+                        <field name="access_token" password="True"/>
+                    </group>
+                    <group string="Connection Status">
+                        <field name="token_valid"/>
+                        <field name="token_type"/>
+                        <field name="token_owner_id"/>
+                        <field name="expires_at"/>
+                        <field name="leads_retrieval_granted"/>
+                        <field name="granted_scopes"/>
+                        <field name="last_checked"/>
+                    </group>
+                    <div class="alert alert-warning" role="alert"
+                         invisible="leads_retrieval_granted or not token_valid">
+                        Development mode — test leads only. The connected token is valid but
+                        does not grant <strong>leads_retrieval</strong>; Meta will not deliver
+                        real Lead Ads data until App Review + Advanced Access clear.
+                    </div>
+                    <div class="alert alert-info" role="alert"
+                         invisible="not leads_retrieval_granted">
+                        <strong>leads_retrieval</strong> is granted. Real production lead delivery
+                        still depends on Meta App Review + Advanced Access + Business Verification
+                        completing for this app.
+                    </div>
+                    <div class="alert alert-warning" role="alert"
+                         invisible="cron_status in ('ok', False)">
+                        <field name="cron_status_message" nolabel="1"/>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

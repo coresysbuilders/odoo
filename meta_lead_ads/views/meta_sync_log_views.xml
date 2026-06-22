@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <record id="meta_sync_log_view_list" model="ir.ui.view">
+    <field name="name">meta.sync.log.list</field>
+    <field name="model">meta.sync.log</field>
+    <field name="arch" type="xml">
+      <list>
+        <field name="create_date"/>
+        <field name="meta_leadgen_id"/>
+        <field name="status"/>
+        <field name="trigger"/>
+        <field name="match_key"/>
+        <field name="retry_count"/>
+        <field name="lead_id"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="meta_sync_log_view_form" model="ir.ui.view">
+    <field name="name">meta.sync.log.form</field>
+    <field name="model">meta.sync.log</field>
+    <field name="arch" type="xml">
+      <form>
+        <header>
+          <!-- Manual retry, shown only on a failed row. Restricted to Meta Admin
+               because read-only users (Meta User / Sales Manager) can read sync
+               logs but cannot write them, so without this group they would see a
+               Retry button that only errors at the ACL layer. The real security
+               boundary is the guard inside action_retry; this groups= is just UX
+               hygiene so the button doesn't appear when it can't work. -->
+          <button name="action_retry" string="Retry" type="object"
+                  class="btn-primary" invisible="status != 'failed'"
+                  groups="meta_lead_ads.group_meta_admin"/>
+        </header>
+        <sheet>
+          <group>
+            <field name="meta_leadgen_id" readonly="1"/>
+            <field name="status" readonly="1"/>
+            <field name="trigger" readonly="1"/>
+            <field name="match_key" readonly="1"/>
+            <field name="retry_count" readonly="1"/>
+            <field name="lead_id" readonly="1"/>
+            <field name="error_message" readonly="1"/>
+          </group>
+          <group string="Raw Payload (admin only)" groups="meta_lead_ads.group_meta_admin">
+            <field name="raw_payload" readonly="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <!-- Bulk retry, bound to the sync-log list "Action" menu so an admin can retry
+       many selected failed rows at once. It calls the same action_retry method as
+       the form button, so the count notification propagates. Restricted to Meta
+       Admin because writes are admin-only; read-only users would otherwise see a
+       bulk action that only errors at the ACL layer. UX hygiene only — the real
+       boundary is the guard inside action_retry. -->
+  <record id="action_meta_sync_log_retry_server" model="ir.actions.server">
+    <field name="name">Retry Selected</field>
+    <field name="model_id" ref="model_meta_sync_log"/>
+    <field name="binding_model_id" ref="model_meta_sync_log"/>
+    <field name="binding_view_types">list</field>
+    <field name="groups_id" eval="[Command.link(ref('meta_lead_ads.group_meta_admin'))]"/>
+    <field name="state">code</field>
+    <field name="code">action = records.action_retry()</field>
+  </record>
+</odoo>

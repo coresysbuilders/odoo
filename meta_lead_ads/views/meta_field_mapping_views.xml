@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <record id="meta_field_mapping_view_list" model="ir.ui.view">
+        <field name="name">meta.field.mapping.list</field>
+        <field name="model">meta.field.mapping</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="meta_key"/>
+                <field name="crm_field_id"/>
+                <field name="form_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="meta_field_mapping_view_form" model="ir.ui.view">
+        <field name="name">meta.field.mapping.form</field>
+        <field name="model">meta.field.mapping</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="form_id"/>
+                        <field name="meta_key"/>
+                        <field name="crm_field_id"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

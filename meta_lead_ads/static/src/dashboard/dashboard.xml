@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<!--
+    QWeb template for the read-only Leads Analytics Dashboard (lives in the
+    web.assets_backend bundle, NOT the manifest data list).
+
+    Copy is the EXACT UI-SPEC Copywriting Contract. Status pills carry a text
+    label + glyph (never color-only). Icon-only controls carry aria-label.
+    Sync Log (Recent) + System Health are GLOBAL — a note marks them as not
+    period-scoped. Odoo-18 markup conventions: no <tree>, no attrs.
+-->
+<templates xml:space="preserve">
+
+    <t t-name="meta_lead_ads.MetaLeadsDashboard">
+        <div class="o_meta_dashboard" role="main">
+
+            <!-- ============ Header bar (logo + title + period + refresh) ======= -->
+            <div class="o_meta_dash_header">
+                <div class="o_meta_dash_brand">
+                    <img class="o_meta_dash_logo"
+                         src="/meta_lead_ads/static/description/icon.png"
+                         alt="Meta Leads"/>
+                    <span class="o_meta_dash_title">Meta Leads Dashboard</span>
+                </div>
+                <div class="o_meta_dash_controls">
+                    <label class="o_meta_dash_period_label" for="o_meta_period">Period</label>
+                    <select id="o_meta_period"
+                            class="o_meta_dash_period"
+                            aria-label="Select reporting period"
+                            t-att-disabled="state.loading ? 'disabled' : false"
+                            t-on-change="onPeriodChange">
+                        <option value="month" t-att-selected="state.periodMode === 'month'">This month</option>
+                        <option value="quarter" t-att-selected="state.periodMode === 'quarter'">This quarter</option>
+                        <option value="year" t-att-selected="state.periodMode === 'year'">This year</option>
+                        <option value="custom" t-att-selected="state.periodMode === 'custom'">Custom range</option>
+                    </select>
+                    <t t-if="isCustom">
+                        <label class="o_meta_dash_date_label" for="o_meta_from">From</label>
+                        <input id="o_meta_from" type="date"
+                               aria-label="Custom range start date"
+                               t-att-disabled="state.loading ? 'disabled' : false"
+                               t-on-change="onDateFromChange"/>
+                        <label class="o_meta_dash_date_label" for="o_meta_to">To</label>
+                        <input id="o_meta_to" type="date"
+                               aria-label="Custom range end date"
+                               t-att-disabled="state.loading ? 'disabled' : false"
+                               t-on-change="onDateToChange"/>
+                    </t>
+                    <button class="btn o_meta_dash_refresh"
+                            aria-label="Refresh data"
+                            t-att-disabled="state.loading ? 'disabled' : false"
+                            t-on-click="refresh">
+                        <i class="fa fa-refresh" role="img" aria-hidden="true"/>
+                        <span>Refresh data</span>
+                    </button>
+                </div>
+            </div>
+            <div class="o_meta_dash_rule"/>
+
+            <!-- ============ Error state (token-free copy) ===================== -->
+            <t t-if="state.error">
+                <div class="o_meta_dash_state o_meta_dash_error">
+                    <h2>Couldn't load dashboard data</h2>
+                    <p>Something went wrong fetching the figures. Refresh the page; if it persists, check the Sync Log and System Health card below.</p>
+                </div>
+            </t>
+
+            <!-- ============ Loading skeleton ================================= -->
+            <t t-elif="state.loading and !state.data">
+                <div class="o_meta_dash_state o_meta_dash_loading" aria-busy="true">
+                    <div class="o_meta_skel o_meta_skel_kpis"/>
+                    <div class="o_meta_skel o_meta_skel_chart"/>
+                </div>
+            </t>
+
+            <!-- ============ Loaded dashboard ================================= -->
+            <t t-else="">
+
+                <!-- KPI row (New / Synced / Failed) -->
+                <div class="o_meta_dash_kpis">
+                    <div class="o_meta_kpi">
+                        <div class="o_meta_kpi_label">New leads</div>
+                        <div class="o_meta_kpi_value" t-esc="state.data.kpis.new"/>
+                        <t t-if="state.data.deltas.new !== null and state.data.deltas.new !== undefined">
+                            <div t-att-class="'o_meta_kpi_delta ' + deltaClass(state.data.deltas.new)">
+                                <i t-att-class="'fa ' + deltaIcon(state.data.deltas.new)" aria-hidden="true"/>
+                                <span t-esc="formatPercent(state.data.deltas.new)"/>
+                            </div>
+                        </t>
+                    </div>
+                    <div class="o_meta_kpi">
+                        <div class="o_meta_kpi_label">Synced</div>
+                        <div class="o_meta_kpi_value" t-esc="state.data.kpis.synced"/>
+                        <t t-if="state.data.deltas.synced !== null and state.data.deltas.synced !== undefined">
+                            <div t-att-class="'o_meta_kpi_delta ' + deltaClass(state.data.deltas.synced)">
+                                <i t-att-class="'fa ' + deltaIcon(state.data.deltas.synced)" aria-hidden="true"/>
+                                <span t-esc="formatPercent(state.data.deltas.synced)"/>
+                            </div>
+                        </t>
+                    </div>
+                    <div class="o_meta_kpi">
+                        <div class="o_meta_kpi_label">Failed</div>
+                        <div class="o_meta_kpi_value" t-esc="state.data.kpis.failed"/>
+                        <t t-if="state.data.deltas.failed !== null and state.data.deltas.failed !== undefined">
+                            <div t-att-class="'o_meta_kpi_delta ' + deltaClass(state.data.deltas.failed)">
+                                <i t-att-class="'fa ' + deltaIcon(state.data.deltas.failed)" aria-hidden="true"/>
+                                <span t-esc="formatPercent(state.data.deltas.failed)"/>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+
+                <!-- Overview row: line chart + conversion metrics -->
+                <div class="o_meta_dash_row o_meta_dash_overview">
+                    <div class="o_meta_card o_meta_card_chart">
+                        <h2 class="o_meta_card_title">Meta Leads Dashboard</h2>
+                        <t t-if="isEmptyWindow">
+                            <div class="o_meta_dash_empty">
+                                <t t-if="isFirstRun">
+                                    <h3>No Meta leads yet</h3>
+                                    <p>Once leads start arriving from your connected Meta forms, this dashboard will fill in automatically.</p>
+                                </t>
+                                <t t-else="">
+                                    <h3>No Meta leads in this period</h3>
+                                    <p>No Meta leads arrived between
+                                        <t t-esc="state.data.window.from"/> and <t t-esc="state.data.window.to"/>. Try a wider period, or check the Sync Log for ingestion errors.</p>
+                                </t>
+                            </div>
+                        </t>
+                        <div class="o_meta_chart_wrap o_meta_line_wrap" t-att-class="isEmptyWindow ? 'd-none' : ''">
+                            <canvas t-ref="lineCanvas" aria-label="Leads over time line chart"/>
+                        </div>
+                    </div>
+                    <div class="o_meta_card o_meta_card_conversion">
+                        <h2 class="o_meta_card_title">Conversion</h2>
+                        <div class="o_meta_conv_metric">
+                            <span class="o_meta_conv_label">Converted to opportunity</span>
+                            <span class="o_meta_conv_value">· <t t-esc="formatPercent(state.data.conversion.opportunity_rate)"/></span>
+                        </div>
+                        <div class="o_meta_conv_metric">
+                            <span class="o_meta_conv_label">Won rate</span>
+                            <span class="o_meta_conv_value">· <t t-esc="formatPercent(state.data.conversion.won_rate)"/></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance row: Top Campaigns donut + drill-down -->
+                <div class="o_meta_dash_row o_meta_dash_performance">
+                    <div class="o_meta_card o_meta_card_donut">
+                        <h2 class="o_meta_card_title">Top Campaigns</h2>
+                        <div class="o_meta_drill_toggle" role="group" aria-label="Drill-down level">
+                            <button type="button"
+                                    aria-label="Group by campaign"
+                                    t-att-class="'o_meta_drill_btn ' + (state.drilldown === 'campaign' ? 'o_meta_drill_active' : '')"
+                                    t-att-disabled="state.loading ? 'disabled' : false"
+                                    t-on-click="() => this.setDrilldown('campaign')">By campaign</button>
+                            <button type="button"
+                                    aria-label="Show top ads"
+                                    t-att-class="'o_meta_drill_btn ' + (state.drilldown === 'ads' ? 'o_meta_drill_active' : '')"
+                                    t-att-disabled="state.loading ? 'disabled' : false"
+                                    t-on-click="() => this.setDrilldown('ads')">Top ads</button>
+                            <button type="button"
+                                    aria-label="Show top ad sets"
+                                    t-att-class="'o_meta_drill_btn ' + (state.drilldown === 'adsets' ? 'o_meta_drill_active' : '')"
+                                    t-att-disabled="state.loading ? 'disabled' : false"
+                                    t-on-click="() => this.setDrilldown('adsets')">Top ad sets</button>
+                        </div>
+                        <t t-if="!drilldownRows.length">
+                            <div class="o_meta_dash_empty">
+                                <h3>No Meta leads in this period</h3>
+                                <p>No Meta leads arrived between
+                                    <t t-esc="state.data.window.from"/> and <t t-esc="state.data.window.to"/>. Try a wider period, or check the Sync Log for ingestion errors.</p>
+                            </div>
+                        </t>
+                        <div class="o_meta_chart_wrap o_meta_donut_wrap" t-att-class="!drilldownRows.length ? 'd-none' : ''">
+                            <canvas t-ref="donutCanvas" aria-label="Top campaigns donut chart"/>
+                        </div>
+                    </div>
+                    <div class="o_meta_card o_meta_card_ranking">
+                        <h2 class="o_meta_card_title">Ranked by lead volume — conversion shown per row</h2>
+                        <table class="o_meta_rank_table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Leads</th>
+                                    <th>Opp. rate</th>
+                                    <th>Won rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="drilldownRows" t-as="row" t-key="state.drilldown + '/' + row.name">
+                                    <tr>
+                                        <td t-esc="row.name"/>
+                                        <td t-esc="row.count"/>
+                                        <td t-esc="formatPercent(row.opportunity_rate)"/>
+                                        <td t-esc="formatPercent(row.won_rate)"/>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                        <p class="o_meta_rank_footnote">Campaigns with fewer than 10 leads are excluded from the conversion ranking.</p>
+                    </div>
+                </div>
+
+                <!-- Operations row: Sync Log (Recent) + System Health -->
+                <p class="o_meta_global_note" role="note">Sync Log (Recent) and System Health are global — they do not change with the selected period.</p>
+                <div class="o_meta_dash_row o_meta_dash_ops">
+                    <div class="o_meta_card o_meta_card_synclog">
+                        <h2 class="o_meta_card_title">Sync Log (Recent)</h2>
+                        <ul class="o_meta_synclog_list">
+                            <t t-if="!state.data.sync_recent.length">
+                                <li class="o_meta_synclog_empty">No sync activity yet.</li>
+                            </t>
+                            <t t-foreach="state.data.sync_recent" t-as="log" t-key="log_index">
+                                <li class="o_meta_synclog_row">
+                                    <span t-att-class="'o_meta_pill ' + statusPillClass(log.status)">
+                                        <t t-esc="statusLabel(log.status)"/>
+                                    </span>
+                                    <span class="o_meta_synclog_ref" t-esc="shortRef(log.meta_leadgen_id)"/>
+                                    <span class="o_meta_synclog_sep">·</span>
+                                    <span class="o_meta_synclog_time" t-esc="relativeTime(log.create_date)"/>
+                                </li>
+                            </t>
+                        </ul>
+                        <a href="#" class="o_meta_link_out"
+                           aria-label="View full sync log"
+                           t-on-click.prevent="openFullSyncLog">View Full Sync Log →</a>
+                    </div>
+                    <div class="o_meta_card o_meta_card_health">
+                        <h2 class="o_meta_card_title">System Health</h2>
+                        <div class="o_meta_health_signal">
+                            <span class="o_meta_health_name">Webhook</span>
+                            <span t-att-class="'o_meta_pill ' + statusPillClass(state.data.health.webhook.status)" t-esc="state.data.health.webhook.label"/>
+                            <span class="o_meta_health_caption" t-esc="state.data.health.webhook.caption"/>
+                        </div>
+                        <div class="o_meta_health_signal">
+                            <span class="o_meta_health_name">Scheduler</span>
+                            <span t-att-class="'o_meta_pill ' + statusPillClass(state.data.health.scheduler.status)" t-esc="state.data.health.scheduler.label"/>
+                            <span class="o_meta_health_caption" t-esc="state.data.health.scheduler.caption"/>
+                        </div>
+                        <div class="o_meta_health_signal">
+                            <span class="o_meta_health_name">Token</span>
+                            <span t-att-class="'o_meta_pill ' + statusPillClass(state.data.health.token.status)" t-esc="state.data.health.token.label"/>
+                            <span class="o_meta_health_caption" t-esc="state.data.health.token.caption"/>
+                        </div>
+                    </div>
+                </div>
+
+            </t>
+        </div>
+    </t>
+
+</templates>

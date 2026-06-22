@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!--
+        Leads Analytics Dashboard route (Phase 11, D-13/D-14).
+
+        - ir.actions.client whose <tag> MUST equal the registry tag in
+          static/src/dashboard/dashboard.js ("meta_lead_ads.dashboard").
+        - A NEW top-level (parentless) root menuitem with a web_icon — this is what
+          makes "Meta Leads" appear as a top-level APP (NOT under
+          base.menu_administration; Phase 10 deliberately moved config under
+          Technical Settings, this is the one new operational surface).
+        - Both the root and the child are gated to group_meta_admin (defense in
+          depth alongside the in-method has_group gate in get_dashboard_metrics).
+          group_meta_admin is defined in security/meta_security.xml, which loads
+          first, so the groups= references resolve.
+        - The QWeb template lives in the web.assets_backend bundle, NOT here.
+    -->
+
+    <!-- Client action — tag matches the OWL registry tag (cross-file contract). -->
+    <record id="meta_dashboard_action" model="ir.actions.client">
+        <field name="name">Meta Leads Dashboard</field>
+        <field name="tag">meta_lead_ads.dashboard</field>
+    </record>
+
+    <!-- Top-level (parentless) app menu: root + web_icon => top-level app (D-13).
+         web_icon is the square app icon (static/description/icon.png); the wide
+         cover banner (static/description/cover.jpg) is the description-page
+         image, not the menu/apps-list icon. -->
+    <menuitem id="menu_meta_leads_root"
+              name="Meta Leads"
+              web_icon="meta_lead_ads,static/description/icon.png"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="50"/>
+
+    <!-- Child menu that opens the dashboard client action (D-14). -->
+    <menuitem id="menu_meta_leads_dashboard"
+              name="Dashboard"
+              parent="menu_meta_leads_root"
+              action="meta_dashboard_action"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="10"/>
+</odoo>

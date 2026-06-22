@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <record id="meta_promote_answer_view_form" model="ir.ui.view">
+        <field name="name">meta.promote.answer.form</field>
+        <field name="model">meta.promote.answer</field>
+        <field name="arch" type="xml">
+            <form string="Promote Meta Answer to Field">
+                <group>
+                    <field name="field_label"/>
+                    <field name="tech_name" readonly="1"/>
+                    <field name="reuse_confirmed"/>
+                </group>
+                <footer>
+                    <button name="action_promote" string="Promote"
+                            type="object" class="btn-primary"/>
+                    <button string="Cancel" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="meta_promote_answer_action" model="ir.actions.act_window">
+        <field name="name">Promote Meta Answer to Field</field>
+        <field name="res_model">meta.promote.answer</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

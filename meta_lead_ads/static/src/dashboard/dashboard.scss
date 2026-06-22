@@ -1,0 +1,426 @@
+// Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+// Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+// redistribution, or resale, in whole or in part, via any medium, is prohibited.
+//
+// Coresys-brand styling for the Leads Analytics Dashboard.
+//
+// Tokens from branding/coresys_branding_colors.txt + 11-UI-SPEC.md:
+//   accent  #0052FE  (line series, selected donut, active selector, links)
+//   ink     #06152C  (titles, KPI values, body text)
+//   secondary #E4EEFC (KPI tile bg, header strips, zebra)
+//   surface #FFFFFF
+//   semantic: positive #1E9E5A | warning #D9822B | destructive #D64545
+//
+// Spacing scale (8-pt): xs 4 / sm 8 / md 16 / lg 24 / xl 32 / 2xl 48 / 3xl 64.
+// Typography: KPI value 28/600, card title 20/600, body 14/400, label 12/600.
+// Chart geometry constants: line canvas 280px, donut 240px, KPI tile min 120px.
+//
+
+$meta-accent: #0052fe;
+$meta-ink: #06152c;
+$meta-secondary: #e4eefc;
+$meta-surface: #ffffff;
+$meta-positive: #1e9e5a;
+$meta-warning: #d9822b;
+$meta-destructive: #d64545;
+
+$meta-sp-xs: 4px;
+$meta-sp-sm: 8px;
+$meta-sp-md: 16px;
+$meta-sp-lg: 24px;
+$meta-sp-xl: 32px;
+$meta-sp-2xl: 48px;
+$meta-sp-3xl: 64px;
+
+.o_meta_dashboard {
+    padding: $meta-sp-2xl $meta-sp-xl;
+    color: $meta-ink;
+    background: $meta-surface;
+    overflow-y: auto;
+    height: 100%;
+
+    // ---------- Header ----------
+    .o_meta_dash_header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: $meta-sp-md;
+        flex-wrap: wrap;
+    }
+
+    .o_meta_dash_brand {
+        display: flex;
+        align-items: center;
+        gap: $meta-sp-sm;
+    }
+
+    .o_meta_dash_logo {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+    }
+
+    .o_meta_dash_title {
+        font-size: 20px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: $meta-ink;
+    }
+
+    .o_meta_dash_controls {
+        display: flex;
+        align-items: center;
+        gap: $meta-sp-md;
+        flex-wrap: wrap;
+    }
+
+    .o_meta_dash_period_label,
+    .o_meta_dash_date_label {
+        font-size: 12px;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .o_meta_dash_period {
+        border: 1px solid $meta-secondary;
+        border-radius: 4px;
+        padding: $meta-sp-xs $meta-sp-sm;
+        color: $meta-ink;
+
+        &:focus {
+            outline: 2px solid $meta-accent;
+        }
+
+        &:disabled {
+            opacity: 0.6;
+        }
+    }
+
+    .o_meta_dash_refresh {
+        display: inline-flex;
+        align-items: center;
+        gap: $meta-sp-xs;
+        color: $meta-accent;
+
+        &:disabled {
+            opacity: 0.6;
+        }
+    }
+
+    .o_meta_dash_rule {
+        height: 2px;
+        background: $meta-accent;
+        margin: $meta-sp-md 0 $meta-sp-xl;
+        border-radius: 1px;
+    }
+
+    // ---------- KPI row ----------
+    .o_meta_dash_kpis {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: $meta-sp-lg;
+        margin-bottom: $meta-sp-xl;
+
+        @media (max-width: 768px) {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .o_meta_kpi {
+        background: $meta-secondary;
+        border-radius: 8px;
+        padding: $meta-sp-lg;
+        min-height: 120px;
+        display: flex;
+        flex-direction: column;
+        gap: $meta-sp-sm;
+    }
+
+    .o_meta_kpi_label {
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.5;
+    }
+
+    .o_meta_kpi_value {
+        font-size: 28px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: $meta-ink;
+    }
+
+    .o_meta_kpi_delta {
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: $meta-sp-xs;
+
+        &.o_meta_delta_up {
+            color: $meta-positive;
+        }
+
+        &.o_meta_delta_down {
+            color: $meta-destructive;
+        }
+    }
+
+    // ---------- Cards / rows ----------
+    .o_meta_dash_row {
+        display: grid;
+        gap: $meta-sp-lg;
+        margin-bottom: $meta-sp-xl;
+    }
+
+    .o_meta_dash_overview,
+    .o_meta_dash_performance,
+    .o_meta_dash_ops {
+        grid-template-columns: 2fr 1fr;
+
+        @media (max-width: 992px) {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .o_meta_card {
+        background: $meta-surface;
+        border: 1px solid $meta-secondary;
+        border-radius: 8px;
+        padding: $meta-sp-lg;
+    }
+
+    .o_meta_card_title {
+        font-size: 20px;
+        font-weight: 600;
+        line-height: 1.2;
+        color: $meta-ink;
+        margin: 0 0 $meta-sp-md;
+    }
+
+    // ---------- Charts ----------
+    .o_meta_chart_wrap {
+        position: relative;
+        width: 100%;
+    }
+
+    .o_meta_line_wrap {
+        height: 280px;
+    }
+
+    .o_meta_donut_wrap {
+        height: 240px;
+    }
+
+    // ---------- Conversion ----------
+    .o_meta_conv_metric {
+        display: flex;
+        align-items: baseline;
+        gap: $meta-sp-xs;
+        font-size: 14px;
+        margin-bottom: $meta-sp-sm;
+    }
+
+    .o_meta_conv_label {
+        font-weight: 600;
+    }
+
+    .o_meta_conv_value {
+        font-size: 28px;
+        font-weight: 600;
+        color: $meta-accent;
+    }
+
+    // ---------- Drill-down toggle ----------
+    .o_meta_drill_toggle {
+        display: inline-flex;
+        gap: $meta-sp-xs;
+        margin-bottom: $meta-sp-md;
+    }
+
+    .o_meta_drill_btn {
+        border: 1px solid $meta-secondary;
+        background: $meta-surface;
+        color: $meta-ink;
+        border-radius: 4px;
+        padding: $meta-sp-xs $meta-sp-sm;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+
+        &.o_meta_drill_active {
+            background: $meta-accent;
+            border-color: $meta-accent;
+            color: $meta-surface;
+        }
+
+        &:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+    }
+
+    // ---------- Ranking table ----------
+    .o_meta_rank_table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+
+        th,
+        td {
+            text-align: left;
+            padding: $meta-sp-sm;
+        }
+
+        th {
+            font-size: 12px;
+            font-weight: 600;
+            border-bottom: 1px solid $meta-secondary;
+        }
+
+        tbody tr:nth-child(odd) {
+            background: $meta-secondary;
+        }
+    }
+
+    .o_meta_rank_footnote {
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: $meta-sp-sm;
+        opacity: 0.8;
+    }
+
+    // ---------- Operations ----------
+    .o_meta_global_note {
+        font-size: 12px;
+        font-weight: 600;
+        opacity: 0.8;
+        margin-bottom: $meta-sp-sm;
+    }
+
+    .o_meta_synclog_list {
+        list-style: none;
+        margin: 0 0 $meta-sp-md;
+        padding: 0;
+    }
+
+    .o_meta_synclog_row {
+        display: flex;
+        align-items: center;
+        gap: $meta-sp-sm;
+        font-size: 14px;
+        padding: $meta-sp-xs 0;
+    }
+
+    .o_meta_synclog_empty {
+        font-size: 14px;
+        opacity: 0.7;
+    }
+
+    .o_meta_link_out {
+        color: $meta-accent;
+        font-weight: 600;
+        text-decoration: none;
+
+        &:hover {
+            text-decoration: underline;
+        }
+    }
+
+    // ---------- Health ----------
+    .o_meta_health_signal {
+        display: flex;
+        align-items: center;
+        gap: $meta-sp-sm;
+        padding: $meta-sp-sm 0;
+        font-size: 14px;
+    }
+
+    .o_meta_health_name {
+        font-weight: 600;
+        min-width: 90px;
+    }
+
+    .o_meta_health_caption {
+        font-size: 12px;
+        opacity: 0.8;
+    }
+
+    // ---------- Status pills (text + color; never color-only) ----------
+    .o_meta_pill {
+        display: inline-block;
+        padding: 2px $meta-sp-sm;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.5;
+
+        &.o_meta_pill_ok {
+            background: rgba(30, 158, 90, 0.15);
+            color: $meta-positive;
+        }
+
+        &.o_meta_pill_warn {
+            background: rgba(217, 130, 43, 0.15);
+            color: $meta-warning;
+        }
+
+        &.o_meta_pill_bad {
+            background: rgba(214, 69, 69, 0.15);
+            color: $meta-destructive;
+        }
+    }
+
+    // ---------- States ----------
+    .o_meta_dash_empty,
+    .o_meta_dash_state {
+        min-height: 64px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: $meta-sp-sm;
+        text-align: center;
+        padding: $meta-sp-xl 0;
+
+        h2,
+        h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: $meta-ink;
+            margin: 0;
+        }
+
+        p {
+            font-size: 14px;
+            margin: 0;
+        }
+    }
+
+    .o_meta_dash_error h2 {
+        color: $meta-destructive;
+    }
+
+    .o_meta_skel {
+        background: $meta-secondary;
+        border-radius: 8px;
+        margin-bottom: $meta-sp-lg;
+        animation: o_meta_skel_pulse 1.2s ease-in-out infinite;
+    }
+
+    .o_meta_skel_kpis {
+        height: 120px;
+    }
+
+    .o_meta_skel_chart {
+        height: 280px;
+    }
+}
+
+@keyframes o_meta_skel_pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}

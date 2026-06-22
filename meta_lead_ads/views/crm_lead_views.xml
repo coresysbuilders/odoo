@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <record id="crm_lead_view_form_meta" model="ir.ui.view">
+    <field name="name">crm.lead.form.meta.attribution</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//sheet/group" position="after">
+        <group string="Meta Attribution" name="meta_attribution"
+               invisible="not meta_leadgen_id">
+          <field name="meta_platform" readonly="1"/>
+          <field name="meta_campaign_name" readonly="1"/>
+          <field name="meta_adset_name" readonly="1"/>
+          <field name="meta_ad_name" readonly="1"/>
+          <field name="meta_form_name" readonly="1"/>
+          <field name="meta_page_name" readonly="1"/>
+          <field name="meta_leadgen_id" readonly="1"/>
+          <field name="meta_form_id_ref" readonly="1"/>
+          <field name="meta_page_id_ref" readonly="1"/>
+          <field name="meta_account_id" readonly="1"/>
+        </group>
+      </xpath>
+      <xpath expr="//notebook" position="inside">
+        <page string="Meta Answers" name="meta_answers"
+              invisible="not meta_leadgen_id">
+          <field name="answer_ids" readonly="1">
+            <list>
+              <field name="label"/>
+              <field name="question_key"/>
+              <field name="value"/>
+              <button name="action_promote_to_field" type="object"
+                      string="Promote to Field" icon="fa-magic"
+                      groups="meta_lead_ads.group_meta_admin"/>
+            </list>
+          </field>
+        </page>
+      </xpath>
+      <xpath expr="//page[@name='meta_answers']" position="after">
+        <group string="Meta Custom Fields" name="meta_custom_fields"
+               invisible="not meta_leadgen_id"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

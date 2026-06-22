@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <!-- Admin view for the durable webhook event queue. raw_payload carries a
+       field-level admin-only groups on the model, so it is automatically stripped
+       from a non-admin read and from this view — no view-level guard needed. -->
+  <record id="meta_webhook_event_view_list" model="ir.ui.view">
+    <field name="name">meta.webhook.event.list</field>
+    <field name="model">meta.webhook.event</field>
+    <field name="arch" type="xml">
+      <list>
+        <field name="create_date"/>
+        <field name="leadgen_id"/>
+        <field name="page_id"/>
+        <field name="form_id"/>
+        <field name="status"/>
+        <field name="attempts"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="meta_webhook_event_view_form" model="ir.ui.view">
+    <field name="name">meta.webhook.event.form</field>
+    <field name="model">meta.webhook.event</field>
+    <field name="arch" type="xml">
+      <form>
+        <sheet>
+          <group>
+            <field name="leadgen_id" readonly="1"/>
+            <field name="page_id" readonly="1"/>
+            <field name="form_id" readonly="1"/>
+            <field name="status" readonly="1"/>
+            <field name="attempts" readonly="1"/>
+            <field name="lead_id" readonly="1"/>
+            <field name="error_message" readonly="1"/>
+          </group>
+          <group string="Raw Payload (admin only)" groups="meta_lead_ads.group_meta_admin">
+            <field name="raw_payload" readonly="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="meta_webhook_event_action" model="ir.actions.act_window">
+    <field name="name">Webhook Events</field>
+    <field name="res_model">meta.webhook.event</field>
+    <field name="view_mode">list,form</field>
+  </record>
+
+  <menuitem id="menu_meta_webhook_event"
+            name="Webhook Events"
+            parent="crm.crm_menu_config"
+            action="meta_webhook_event_action"
+            groups="meta_lead_ads.group_meta_user"
+            sequence="52"/>
+</odoo>

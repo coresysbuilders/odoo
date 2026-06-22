@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <record id="meta_lead_form_view_list" model="ir.ui.view">
+        <field name="name">meta.lead.form.list</field>
+        <field name="model">meta.lead.form</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="form_id"/>
+                <field name="page_id"/>
+                <field name="sync_enabled"/>
+                <field name="mapping_count"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="meta_lead_form_view_form" model="ir.ui.view">
+        <field name="name">meta.lead.form.form</field>
+        <field name="model">meta.lead.form</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button type="object" name="action_open_mappings"
+                                class="oe_stat_button" icon="fa-exchange">
+                            <field name="mapping_count" widget="statinfo" string="Field Mappings"/>
+                        </button>
+                    </div>
+                    <group>
+                        <field name="name"/>
+                        <field name="form_id"/>
+                        <field name="page_id"/>
+                        <field name="sync_enabled"/>
+                        <field name="active"/>
+                        <field name="last_synced_time" readonly="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Field Mappings" name="mappings">
+                            <field name="mapping_ids">
+                                <list editable="bottom">
+                                    <field name="meta_key"/>
+                                    <field name="crm_field_id"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

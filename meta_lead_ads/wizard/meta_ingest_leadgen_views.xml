@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <record id="meta_ingest_leadgen_view_form" model="ir.ui.view">
+        <field name="name">meta.ingest.leadgen.form</field>
+        <field name="model">meta.ingest.leadgen</field>
+        <field name="arch" type="xml">
+            <form string="Ingest Meta Lead by ID">
+                <group>
+                    <field name="page_id"/>
+                    <field name="leadgen_id"/>
+                </group>
+                <footer>
+                    <button name="action_ingest" string="Ingest"
+                            type="object" class="btn-primary"/>
+                    <button string="Cancel" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="meta_ingest_leadgen_action" model="ir.actions.act_window">
+        <field name="name">Ingest Meta Lead by ID</field>
+        <field name="res_model">meta.ingest.leadgen</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_meta_ingest_leadgen"
+              name="Ingest Meta Lead by ID"
+              parent="crm.crm_menu_config"
+              action="meta_ingest_leadgen_action"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="52"/>
+</odoo>

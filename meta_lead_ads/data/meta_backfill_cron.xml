@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <!-- noupdate="1": the intervals are admin-tunable. An admin who widens or
+       narrows the backfill cadence or the token-health frequency keeps that edit
+       across a module upgrade — Odoo only writes these records on first install,
+       never on -u. -->
+  <data noupdate="1">
+    <!-- Deferred backfill sweep. This cron calls _cron_backfill(), which sweeps
+         active + sync_enabled forms (each in its own savepoint) and routes every
+         lead through ingest_leadgen — the cron creates no crm.lead itself. No
+         explicit running-user field is set, matching the webhook cron; the
+         scheduler runs it as the privileged cron user so it can read the
+         admin-grouped token server-side. -->
+    <record id="cron_meta_backfill" model="ir.cron">
+      <field name="name">Meta: Backfill Leads (per-form sweep)</field>
+      <field name="model_id" ref="model_meta_lead_form"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_backfill()</field>
+      <field name="interval_number">15</field>
+      <field name="interval_type">minutes</field>
+      <field name="active" eval="True"/>
+    </record>
+
+    <!-- Daily token-health sweep. Thin call to _cron_token_health(). No explicit
+         running-user field, matching the webhook cron. -->
+    <record id="cron_meta_token_health" model="ir.cron">
+      <field name="name">Meta: Token Health Check</field>
+      <field name="model_id" ref="model_meta_account"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_token_health()</field>
+      <field name="interval_number">1</field>
+      <field name="interval_type">days</field>
+      <field name="active" eval="True"/>
+    </record>
+
+    <!-- Backfill lookback default (days). Admin-tunable global; consumed by
+         meta.lead.form._backfill_lookback_days(). noupdate="1" keeps an admin
+         edit across -u. -->
+    <record id="meta_backfill_lookback_days" model="ir.config_parameter">
+      <field name="key">meta_lead_ads.backfill_lookback_days</field>
+      <field name="value">30</field>
+    </record>
+
+    <!-- Daily retention sweep for meta.sync.log. The table grows unbounded
+         otherwise (every webhook replay and every cron overlap re-query writes a
+         skipped_idempotent row). _cron_vacuum_logs prunes only the non-actionable
+         terminal rows (success/skipped_*) older than the retention window;
+         failed/pending rows are kept. No explicit running-user field.
+         noupdate="1" keeps an admin cadence edit across -u. -->
+    <record id="cron_meta_sync_log_vacuum" model="ir.cron">
+      <field name="name">Meta: Vacuum Sync Logs</field>
+      <field name="model_id" ref="model_meta_sync_log"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_vacuum_logs()</field>
+      <field name="interval_number">1</field>
+      <field name="interval_type">days</field>
+      <field name="active" eval="True"/>
+    </record>
+
+    <!-- Retention window (days) for the sync-log vacuum. Consumed by
+         meta.sync.log._sync_log_retention_days(); 0 disables pruning.
+         Default 14 days (the daily cron prunes non-actionable success/skipped
+         rows older than this; failed/pending rows are always kept). noupdate="1"
+         keeps an admin edit across -u; existing DBs still on the former 90-day
+         default are moved to 14 by migrations/18.0.11.0.0/post-migrate.py. -->
+    <record id="meta_sync_log_retention_days" model="ir.config_parameter">
+      <field name="key">meta_lead_ads.sync_log_retention_days</field>
+      <field name="value">14</field>
+    </record>
+
+    <!-- Same-second / eventual-consistency overlap re-query window (seconds), set
+         to 60 as a bounded hedge. Consumed by
+         meta.lead.form._backfill_overlap_seconds(); the strict-`>` cursor advance
+         plus DB-UNIQUE idempotency absorb the harmless re-reads, so a tuned
+         overlap cannot create duplicates. noupdate="1" keeps an admin edit
+         across -u. -->
+    <record id="meta_backfill_overlap_seconds" model="ir.config_parameter">
+      <field name="key">meta_lead_ads.backfill_overlap_seconds</field>
+      <field name="value">60</field>
+    </record>
+  </data>
+</odoo>

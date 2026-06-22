@@ -1,0 +1,1 @@
+{"data": [{"id": "111111111111111", "name": "Acme Storefront", "access_token": "PAGE_TOKEN_A", "category": "Retail", "tasks": ["MANAGE"]}, {"id": "444444444444444", "name": "Acme New", "access_token": "PAGE_TOKEN_D", "category": "Retail", "tasks": ["MANAGE"]}], "paging": {"cursors": {"before": "B2"}}}

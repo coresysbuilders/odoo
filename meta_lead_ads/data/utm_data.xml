@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <data noupdate="1">
+    <!-- Stock Odoo already ships a "Facebook" utm.source
+         (external id utm.utm_source_facebook), so we deliberately reuse it rather
+         than recreate it. utm.source names are unique, so a second "Facebook"
+         would just be auto-suffixed to "Facebook [2]" — a duplicate we don't want.
+         Attribution resolves Facebook via that stock id.
+
+         Stock Odoo ships no Instagram source and no "Paid Social" medium, so we
+         seed those two here under stable external ids. -->
+    <record id="utm_source_meta_instagram" model="utm.source">
+      <field name="name">Instagram</field>
+    </record>
+    <record id="utm_medium_paid_social" model="utm.medium">
+      <field name="name">Paid Social</field>
+    </record>
+  </data>
+</odoo>

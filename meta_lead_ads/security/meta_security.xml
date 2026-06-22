@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <record id="module_category_meta" model="ir.module.category">
+        <field name="name">Meta</field>
+        <field name="description">Meta Lead Ads integration access</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <record id="group_meta_user" model="res.groups">
+        <field name="name">Meta User</field>
+        <field name="category_id" ref="module_category_meta"/>
+    </record>
+
+    <record id="group_meta_admin" model="res.groups">
+        <field name="name">Meta Admin</field>
+        <field name="category_id" ref="module_category_meta"/>
+        <field name="implied_ids" eval="[(4, ref('group_meta_user'))]"/>
+    </record>
+
+    <!-- The onboarding wizard records are transient and hold the App Secret and
+         access token mid-flow. Without a rule, any Meta Admin can read another
+         admin's in-progress wizard (and its credentials). Scope each admin to
+         the records they created. -->
+    <record id="rule_meta_onboarding_own" model="ir.rule">
+        <field name="name">Meta onboarding: own records only</field>
+        <field name="model_id" ref="model_meta_onboarding"/>
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_meta_admin'))]"/>
+    </record>
+    <record id="rule_meta_onboarding_page_own" model="ir.rule">
+        <field name="name">Meta onboarding page: own records only</field>
+        <field name="model_id" ref="model_meta_onboarding_page"/>
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_meta_admin'))]"/>
+    </record>
+    <record id="rule_meta_onboarding_form_own" model="ir.rule">
+        <field name="name">Meta onboarding form: own records only</field>
+        <field name="model_id" ref="model_meta_onboarding_form"/>
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+        <field name="groups" eval="[(4, ref('group_meta_admin'))]"/>
+    </record>
+</odoo>
