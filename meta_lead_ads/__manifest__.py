@@ -6,10 +6,14 @@
 
 {
     'name': 'Facebook Lead Ads to CRM',
-    'version': '18.0.13.3.3',
+    'version': '18.0.13.3.4',
     'category': 'Sales/CRM',
     'license': 'OPL-1',
-    'summary': 'Ingest Meta (Facebook/Instagram) Lead Ads into Odoo CRM',
+    'summary': 'Bring Facebook & Instagram Lead Ads straight into Odoo CRM. A '
+               'signature-verified webhook plus scheduled backfill capture every '
+               'lead exactly once, enriched with full campaign attribution '
+               '(campaign, ad set, ad, form mapped to UTM), lossless custom-question '
+               'capture, and a built-in leads analytics dashboard.',
     'author': 'CoreSys Builders',
     'maintainer': 'CoreSys Builders',
     'support': 'info@coresysbuilders.com',
