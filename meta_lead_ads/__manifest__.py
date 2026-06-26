@@ -6,7 +6,7 @@
 
 {
     'name': 'Facebook Lead Ads to CRM',
-    'version': '18.0.13.3.5',
+    'version': '18.0.13.3.6',
     'category': 'Sales/CRM',
     'license': 'OPL-1',
     'summary': 'Bring Facebook & Instagram Lead Ads straight into Odoo CRM. A '
@@ -68,14 +68,15 @@
         ],
     },
     'external_dependencies': {'python': []},
-    # Apps-store / description-page imagery. The FIRST entry is the wide CoreSys
-    # cover banner (optimized to ~270 KB so it loads fast) — it leads the
-    # description page (index.html) and is the main store image. The remaining
-    # entries are the in-product screenshots shown in the apps.odoo.com gallery;
-    # they are the same files embedded in the description walkthrough. The small
-    # square Apps-list icon is static/description/icon.png (not listed here).
+    # Apps-store / description-page imagery. The FIRST entry is the MAIN store
+    # image — the animated cover.gif (looping diagram -> features, ~1.16 MB), so
+    # the apps.odoo.com grid card animates and the description page (index.html)
+    # leads with it. The remaining entries are the in-product screenshots shown in
+    # the apps.odoo.com gallery; they are the same files embedded in the
+    # description walkthrough. The static cover.jpg is kept on disk as a fallback.
+    # The small square Apps-list icon is static/description/icon.png (not listed).
     'images': [
-        'static/description/cover.jpg',
+        'static/description/cover.gif',
         'static/description/screenshots/01-dashboard.jpg',
         'static/description/screenshots/02-settings.jpg',
         'static/description/screenshots/03-connection.jpg',
