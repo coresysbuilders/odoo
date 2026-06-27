@@ -1,4 +1,3 @@
-/** @odoo-module **/
 /**
  * Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
  * Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
@@ -8,21 +7,20 @@
 // Read-only Leads Analytics Dashboard — OWL client action (Phase 11, D-01/D-13).
 //
 // Load-bearing rules:
-//   - STRICTLY READ-ONLY (CLAUDE.md #4 / D-01): every affordance either
+//   - STRICTLY READ-ONLY: every affordance either
 //     re-scopes the analytics cards (period selector, drill-down) or links out
 //     to an existing view (View Full Sync Log). No create/write/unlink.
 //   - Chart.js comes from the Odoo BUNDLE (/web/static/lib/Chart/Chart.js) — never
 //     a content-delivery network / npm (threat T-11-SC supply-chain guard). We
 //     prefer the already-global `globalThis.Chart`
-//     and keep loadJS() of the bundled path as a guard (REVIEWS F-2).
+//     and keep loadJS() of the bundled path as a guard.
 //   - Chart config is v3/v4 ONLY: legend under options.plugins.legend + keyed
-//     options.scales.x/y (the v2 top-level legend / per-axis arrays are forbidden)
-//     (REVIEWS F-1 / Pitfall 3).
+//     options.scales.x/y (the v2 top-level legend / per-axis arrays are forbidden).
 //   - A request-sequence-id guard (`_reqSeq`) prevents a slow EARLIER response from
-//     overwriting a NEWER period selection (REVIEWS async race). Controls disable
+//     overwriting a NEWER period selection (async race). Controls disable
 //     while loading.
 //   - x-axis labels come from the backend `series[].bucket` + `bucket_granularity`;
-//     we NEVER re-bucket dates in JS (Codex). Deltas are RELATIVE fractions; render
+//     we NEVER re-bucket dates in JS. Deltas are RELATIVE fractions; render
 //     as percent and HIDE the arrow when the value is null (D-11). sync_recent +
 //     System Health are GLOBAL — they do NOT re-scope with the period.
 //
@@ -73,11 +71,11 @@ export class MetaLeadsDashboard extends Component {
 
         onWillStart(async () => {
             // BUNDLED path — never a CDN. Guard even though Chart is usually a
-            // backend global (REVIEWS F-2): loadJS is a no-op if already loaded.
+            // backend global: loadJS is a no-op if already loaded.
             await loadJS("/web/static/lib/Chart/Chart.js");
             await this.load();
         });
-        // Render only AFTER mount so the canvas refs exist (REVIEWS OWL async).
+        // Render only AFTER mount so the canvas refs exist (OWL async).
         onMounted(() => this.renderCharts());
         // Destroy every instance to avoid the classic canvas/listener leak (Pitfall 5).
         onWillUnmount(() => this._destroyCharts());
@@ -98,7 +96,7 @@ export class MetaLeadsDashboard extends Component {
                 this._inclusiveDateTo(),
                 this.state.periodMode,
             ]);
-            // Ignore a stale (superseded) response (REVIEWS async race).
+            // Ignore a stale (superseded) response (async race).
             if (seq !== this._reqSeq) {
                 return;
             }

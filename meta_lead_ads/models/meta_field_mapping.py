@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
@@ -21,10 +21,11 @@ class MetaFieldMapping(models.Model):
         ondelete='cascade',                           # drop the mapping if the field is removed
     )
 
-    _sql_constraints = [
-        ('form_meta_key_uniq', 'unique(form_id, meta_key)',
-         'Each Meta question key must be mapped at most once per form.'),
-    ]
+    # Odoo 19: models.Constraint replaces the removed _sql_constraints list.
+    _form_meta_key_uniq = models.Constraint(
+        'unique(form_id, meta_key)',
+        'Each Meta question key must be mapped at most once per form.',
+    )
 
     @api.constrains('crm_field_id')
     def _check_target_is_crm_lead(self):

@@ -6,20 +6,21 @@
 -->
 <odoo>
     <!--
-        The Settings entry points plus the upgrade-safe menu removal.
+        The Settings entry points for the single Settings home.
 
         This file loads after views/meta_menus.xml and
-        wizard/meta_onboarding_views.xml. Their <menuitem> source definitions were
-        removed so they are never recreated on upgrade; the three
-        <delete model="ir.ui.menu"> records below then drop the existing DB rows
-        on upgrade. We delete them explicitly rather than relying on the implicit
-        drop that follows removing the XML, since that behaviour is unreliable.
-        The deleted ids still resolve because the records were declared in earlier
-        files in the same module/upgrade transaction.
+        wizard/meta_onboarding_views.xml. res_config_settings_views.xml (the <app>
+        form) loads after this file so its %(...)d button references to
+        meta_field_mapping_action and meta_config_settings_action resolve at
+        view-parse time.
 
-        res_config_settings_views.xml (the <app> form) loads after this file so
-        its %(...)d button references to meta_field_mapping_action and
-        meta_config_settings_action resolve at view-parse time.
+        NOTE: this is a fresh Odoo 19.0 listing, so the legacy 18.x
+        <menuitem> ids (menu_meta_accounts / menu_meta_sync_log /
+        menu_meta_connect) never exist here — the old upgrade-safe
+        <delete model="ir.ui.menu"> records were dropped (on a fresh install they
+        only logged "Skipping deletion for missing XML ID" warnings and did
+        nothing). Those menuitems are already absent from the module XML, so they
+        are never created in the first place.
     -->
 
     <!-- 1. Global entry point to the per-form meta.field.mapping model.
@@ -32,14 +33,15 @@
         <field name="view_mode">list,form</field>
     </record>
 
-    <!-- 2. The Settings act_window. target=inline + context module key must equal
-         the <app name="..."> in res_config_settings_views.xml, otherwise the
-         section will not render. -->
+    <!-- 2. The Settings act_window. Odoo 19 removed the 'inline' target value
+         (valid: current/new/fullscreen/main); core's own settings action now
+         omits target entirely and defaults to 'current', so we do the same. The
+         context module key must equal the <app name="..."> in
+         res_config_settings_views.xml, otherwise the section will not render. -->
     <record id="meta_config_settings_action" model="ir.actions.act_window">
         <field name="name">Meta Lead Ads Settings</field>
         <field name="res_model">res.config.settings</field>
         <field name="view_mode">form</field>
-        <field name="target">inline</field>
         <field name="context">{'module': 'meta_lead_ads'}</field>
     </record>
 
@@ -51,12 +53,4 @@
               groups="meta_lead_ads.group_meta_admin"
               sequence="50"/>
 
-    <!-- 4. Upgrade-safe menu removal. Removing the <menuitem> XML alone does not
-         reliably drop the DB rows on upgrade; these explicit <delete> records
-         guarantee the existing ir.ui.menu rows are unlinked. The act_window
-         actions they pointed at are kept (they back the Settings hub buttons).
-         The id= form is the most reliable for module-owned records on upgrade. -->
-    <delete model="ir.ui.menu" id="menu_meta_accounts"/>
-    <delete model="ir.ui.menu" id="menu_meta_sync_log"/>
-    <delete model="ir.ui.menu" id="menu_meta_connect"/>
 </odoo>

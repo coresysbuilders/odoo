@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 from odoo import api, fields, models
 
@@ -100,9 +100,13 @@ class CrmLead(models.Model):
     # meta.page/form never deletes leads. These are populated by matching the
     # raw Char ids elsewhere. The _ref suffix avoids colliding with the
     # raw-Char meta_form_id / meta_page_id.
-    meta_form_id_ref = fields.Many2one('meta.lead.form', string='Meta Form',
+    # Distinct labels from the raw-Char meta_form_name / meta_page_name above:
+    # these m2o links and those Char names share the Meta Attribution group, and
+    # two fields on one model may not share a label (Odoo 19 emits a load-time
+    # warning, and the adjacent fields would be ambiguous in the form).
+    meta_form_id_ref = fields.Many2one('meta.lead.form', string='Linked Meta Form',
                                        ondelete='set null')
-    meta_page_id_ref = fields.Many2one('meta.page', string='Meta Page',
+    meta_page_id_ref = fields.Many2one('meta.page', string='Linked Meta Page',
                                        ondelete='set null')
     meta_account_id = fields.Many2one('meta.account', string='Meta Account',
                                       ondelete='set null')
@@ -111,7 +115,13 @@ class CrmLead(models.Model):
     answer_ids = fields.One2many('meta.lead.answer', 'lead_id',
                                  string='Meta Lead Answers')
 
-    _sql_constraints = [
-        ('meta_leadgen_id_uniq', 'unique(meta_leadgen_id)',
-         'A lead with this Meta Lead ID already exists.'),
-    ]
+    # Odoo 19: SQL constraints are declared as ``models.Constraint`` table
+    # objects (the ``_sql_constraints`` list is no longer honoured — the ORM
+    # silently ignores it with a warning). The attribute name (minus its leading
+    # underscore) becomes the constraint key, so the backing PG constraint name
+    # ``crm_lead_meta_leadgen_id_uniq`` is byte-identical to the 18.0 one — this
+    # DB-UNIQUE is the idempotency keystone and must survive the port intact.
+    _meta_leadgen_id_uniq = models.Constraint(
+        'unique(meta_leadgen_id)',
+        'A lead with this Meta Lead ID already exists.',
+    )

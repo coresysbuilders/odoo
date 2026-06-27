@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 from odoo.tests.common import TransactionCase, tagged
 from odoo.exceptions import AccessError
@@ -27,10 +27,10 @@ class TestSyncLogSecurity(TransactionCase):
         base_internal = self.env.ref('base.group_user')
         self.meta_user = self.env['res.users'].create({
             'name': 'Meta U', 'login': 'meta_u',
-            'groups_id': [(6, 0, [base_internal.id, self.user_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, self.user_group.id])]})
         self.meta_admin = self.env['res.users'].create({
             'name': 'Meta A', 'login': 'meta_a',
-            'groups_id': [(6, 0, [base_internal.id, self.admin_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, self.admin_group.id])]})
 
     # ---- raw_payload PII gate (field-level groups=) -----------------------
 
@@ -83,7 +83,7 @@ class TestSyncLogSecurity(TransactionCase):
         # raw_payload stays absent (PII admin-only).
         mgr = self.env['res.users'].create({
             'name': 'CRM Mgr', 'login': 'crm_mgr',
-            'groups_id': [(6, 0, [self.env.ref('base.group_user').id,
+            'group_ids': [(6, 0, [self.env.ref('base.group_user').id,
                                   self.env.ref('sales_team.group_sale_manager').id])]})
         log = self.env['meta.sync.log'].create(
             {'meta_leadgen_id': 'LG1', 'raw_payload': '{"pii":"secret"}'})

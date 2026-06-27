@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Move existing deployments from the former 90-day sync-log retention default to
 the new 14-day default (feature: auto-clear sync logs after 14 days).

@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 # The per-form cron backfill sweep. _cron_backfill iterates only active +
 # sync_enabled forms inside a per-form savepoint (sibling isolation only -- not
@@ -64,10 +64,11 @@ class MetaLeadForm(models.Model):
         help='Backfill cursor: created_time of the last lead ingested by the '
              'cron sweep.')
 
-    _sql_constraints = [
-        ('form_id_uniq', 'unique(form_id)',
-         'A Meta Lead Form with this ID already exists.'),
-    ]
+    # Odoo 19: models.Constraint replaces the removed _sql_constraints list.
+    _form_id_uniq = models.Constraint(
+        'unique(form_id)',
+        'A Meta Lead Form with this ID already exists.',
+    )
 
     @api.constrains('form_id')
     def _check_form_id_format(self):

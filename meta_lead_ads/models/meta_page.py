@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 from odoo import api, fields, models
 
@@ -24,10 +24,11 @@ class MetaPage(models.Model):
     form_ids = fields.One2many('meta.lead.form', 'page_id', string='Lead Forms')
     form_count = fields.Integer(compute='_compute_form_count', store=True)
 
-    _sql_constraints = [
-        ('page_id_uniq', 'unique(page_id)',
-         'A Meta Page with this ID already exists.'),
-    ]
+    # Odoo 19: models.Constraint replaces the removed _sql_constraints list.
+    _page_id_uniq = models.Constraint(
+        'unique(page_id)',
+        'A Meta Page with this ID already exists.',
+    )
 
     @api.depends('form_ids')
     def _compute_form_count(self):

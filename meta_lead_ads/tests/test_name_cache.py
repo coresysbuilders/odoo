@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Tests for meta.name.cache.
 
@@ -51,10 +51,10 @@ class TestNameCache(TransactionCase):
         meta_user_group = self.env.ref('meta_lead_ads.group_meta_user')
         meta_user = self.env['res.users'].create({
             'name': 'NC Meta U', 'login': 'nc_meta_u',
-            'groups_id': [(6, 0, [base_internal.id, meta_user_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, meta_user_group.id])]})
         plain_user = self.env['res.users'].create({
             'name': 'NC Plain', 'login': 'nc_plain',
-            'groups_id': [(6, 0, [base_internal.id])]})
+            'group_ids': [(6, 0, [base_internal.id])]})
 
         self.env['meta.name.cache'].create({
             'object_type': 'campaign', 'graph_id': 'A', 'name': 'X'})

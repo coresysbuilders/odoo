@@ -5,20 +5,31 @@
     redistribution, or resale, in whole or in part, via any medium, is prohibited.
 -->
 <odoo>
+    <!-- Odoo 19 restructured access rights: res.groups no longer carries a
+         category_id. Groups are grouped on the user form by a res.groups.privilege
+         record, and the privilege is what links to the app's ir.module.category.
+         The ir.module.category is kept (it still anchors the "Meta" section); the
+         new privilege sits between it and the two groups. -->
     <record id="module_category_meta" model="ir.module.category">
         <field name="name">Meta</field>
         <field name="description">Meta Lead Ads integration access</field>
         <field name="sequence">20</field>
     </record>
 
+    <record id="res_groups_privilege_meta" model="res.groups.privilege">
+        <field name="name">Meta Lead Ads</field>
+        <field name="sequence">20</field>
+        <field name="category_id" ref="module_category_meta"/>
+    </record>
+
     <record id="group_meta_user" model="res.groups">
         <field name="name">Meta User</field>
-        <field name="category_id" ref="module_category_meta"/>
+        <field name="privilege_id" ref="res_groups_privilege_meta"/>
     </record>
 
     <record id="group_meta_admin" model="res.groups">
         <field name="name">Meta Admin</field>
-        <field name="category_id" ref="module_category_meta"/>
+        <field name="privilege_id" ref="res_groups_privilege_meta"/>
         <field name="implied_ids" eval="[(4, ref('group_meta_user'))]"/>
     </record>
 

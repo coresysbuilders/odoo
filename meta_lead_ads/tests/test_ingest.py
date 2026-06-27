@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Tests for the idempotent lead ingestion service.
 
@@ -531,7 +531,7 @@ class TestIngestWizard(IngestFixtureMixin, TransactionCase):
         meta_user_group = self.env.ref('meta_lead_ads.group_meta_user')
         non_admin = self.env['res.users'].create({
             'name': 'WZ User', 'login': 'wz_user',
-            'groups_id': [(6, 0, [base_internal.id, meta_user_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, meta_user_group.id])]})
         with self.assertRaises(AccessError):
             self.env['meta.ingest.leadgen'].with_user(non_admin).create({
                 'page_id': self.page.id, 'leadgen_id': 'LG1'})

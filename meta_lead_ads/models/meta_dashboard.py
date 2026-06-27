@@ -2,11 +2,11 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 # Read-only Leads Analytics Dashboard aggregation surface.
 #
-# Load-bearing rules (CLAUDE.md #4 / #3):
+# Load-bearing rules:
 #   - This is the ONLY new server code in Phase 11 and is STRICTLY READ-ONLY:
 #     zero create/write/unlink, no Graph call, no sync trigger. The keystone
 #     single-create ingest path (ingest_leadgen) is untouched.
@@ -18,12 +18,12 @@
 #     and sync_recent shapes are ALLOWLISTED so they can never widen to leak a
 #     token / expiry / raw payload.
 #
-# Odoo 18 ORM contract (RESEARCH Pattern 3 / Pitfall 2 / REVIEWS C-3):
+# Odoo 18 ORM contract:
 #   _read_group(domain, groupby, aggregates) returns a LIST OF TUPLES (not legacy
 #   dicts). Code unpacks the tuples; it never indexes a dict key and never calls
 #   the legacy read_group(fields=...). The create_date:<g> bucket granularity is
 #   DERIVED server-side from a fixed enum {day,week,month,quarter,year} — never
-#   the client-supplied period_mode, and NEVER create_date:custom (REVIEWS C-1).
+#   the client-supplied period_mode, and NEVER create_date:custom.
 import logging
 
 from dateutil.relativedelta import relativedelta
@@ -39,7 +39,7 @@ _logger = logging.getLogger(__name__)
 _PERIOD_MODES = ('month', 'quarter', 'year', 'custom')
 _DEFAULT_PERIOD_MODE = 'month'
 
-# Min-volume guard for the CONVERSION ranking ONLY (RESEARCH A1 / REVIEWS C-2).
+# Min-volume guard for the CONVERSION ranking ONLY.
 # Applied as a PYTHON filter after grouping — NOT a SQL having= (unsupported in
 # Odoo 18 _read_group). The donut VOLUME list keeps ALL campaigns incl. sub-N.
 _MIN_RANK_VOLUME = 10
@@ -51,7 +51,7 @@ _DRILLDOWN_TOP = 10
 # Webhook-evidence freshness window. A trigger='webhook' sync-log row newer than
 # this proves the webhook is delivering; older-but-present history => waiting;
 # no webhook rows ever => unknown. Evidence-based, never inheriting scheduler ok
-# (REVIEWS Codex-MEDIUM — do not mask a dead webhook).
+# (do not mask a dead webhook).
 _WEBHOOK_FRESH_HOURS = 24
 
 # Token "expiring soon" threshold. expires_at is readonly (not secret-grouped),
@@ -91,7 +91,7 @@ class MetaDashboard(models.Model):
         """Return ONE JSON-serializable dict with the full dashboard payload.
 
         STRICTLY READ-ONLY: no create/write/unlink, no Graph call, no sync
-        trigger (CLAUDE.md #4). Admin-gated as the FIRST statement (D-14).
+        trigger. Admin-gated as the FIRST statement.
 
         Window coherence (D-06/D-12): series, kpis, conversion, campaigns,
         drilldown and deltas all use the SAME half-open UTC window. sync_recent
@@ -341,7 +341,7 @@ class MetaDashboard(models.Model):
         opportunity_rate + won_rate.
 
         ranked = the CONVERSION ranking with the N=10 min-volume guard applied
-        as a PYTHON filter (REVIEWS C-2: no SQL having=).
+        as a PYTHON filter (no SQL having=).
         """
         donut = self._dashboard_group_conversion(
             meta, d_from, d_to, 'meta_campaign_name', top=None)
@@ -375,8 +375,8 @@ class MetaDashboard(models.Model):
         win = meta + [('create_date', '>=', d_from), ('create_date', '<', d_to)]
 
         def _label(key):
-            # Collapse BOTH NULL (False) and blank ('') to 'Unattributed'
-            # (Gemini-LOW). Trailing whitespace-only names also collapse.
+            # Collapse BOTH NULL (False) and blank ('') to 'Unattributed'.
+            # Trailing whitespace-only names also collapse.
             return key.strip() if (key and key.strip()) else 'Unattributed'
 
         totals = {}
@@ -486,7 +486,7 @@ class MetaDashboard(models.Model):
 
     @api.model
     def _health_webhook(self, caption):
-        """EVIDENCE-BASED webhook signal (Codex-MEDIUM): recent trigger='webhook'
+        """Evidence-based webhook signal: recent trigger='webhook'
         sync-log activity → running; webhook history but none recent → waiting;
         no webhook rows ever → unknown. NEVER inherits scheduler 'ok' to mask a
         dead webhook."""

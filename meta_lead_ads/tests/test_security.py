@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 from odoo.tests.common import TransactionCase, tagged
 from odoo.exceptions import AccessError
@@ -21,10 +21,10 @@ class TestSecurity(TransactionCase):
         base_internal = self.env.ref('base.group_user')
         self.meta_user = self.env['res.users'].create({
             'name': 'Meta U', 'login': 'meta_u',
-            'groups_id': [(6, 0, [base_internal.id, self.user_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, self.user_group.id])]})
         self.meta_admin = self.env['res.users'].create({
             'name': 'Meta A', 'login': 'meta_a',
-            'groups_id': [(6, 0, [base_internal.id, self.admin_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, self.admin_group.id])]})
 
     def test_meta_user_readonly(self):
         self.env['meta.account'].create({'name': 'X', 'account_id': 'A'})
@@ -42,7 +42,11 @@ class TestSecurity(TransactionCase):
         acc.with_user(self.meta_admin).unlink()
 
     def test_admin_implies_user(self):
-        self.assertIn(self.user_group, self.meta_admin.groups_id)
+        # Odoo 19 split res.users.groups_id into group_ids (directly assigned)
+        # and all_group_ids (the transitive closure incl. implied groups). The
+        # admin user is created with only group_meta_admin directly; user_group
+        # is reached via implied_ids, so it lives in all_group_ids, not group_ids.
+        self.assertIn(self.user_group, self.meta_admin.all_group_ids)
 
     # ---- field-level groups= on token / app_secret -----------------------
     # The secret fields (access_token / app_secret) carry
@@ -98,7 +102,7 @@ class TestSecurity(TransactionCase):
         sys_group = self.env.ref('base.group_system')
         sys_only = self.env['res.users'].create({
             'name': 'Sys Only', 'login': 'sec_sysonly',
-            'groups_id': [(6, 0, [base_internal.id, sys_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, sys_group.id])]})
         Settings = self.env['res.config.settings']
         # Admin (group_meta_admin) sees the Meta section + field.
         admin_arch = Settings.with_user(self.meta_admin).get_view()['arch']

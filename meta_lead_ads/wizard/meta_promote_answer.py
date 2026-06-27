@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 # Admin manual-trigger wizard following the same transient-model pattern as the
 # onboarding wizard. This wizard is the only place that deliberately creates an
@@ -304,10 +304,14 @@ class MetaPromoteAnswer(models.TransientModel):
         # invalidate -> rebuild -> invalidate, then fail loud if the column did
         # not materialize rather than silently dropping writes.
         self.env['ir.model.fields'].invalidate_model()
-        self.env.registry.setup_models(self.env.cr)
+        # Odoo 19 renamed Registry.setup_models -> _setup_models__ (a trailing-
+        # dunder "private" rebuild entry point; there is no public equivalent and
+        # core internals call it by this name). Rebuilds the registry so the
+        # freshly-created manual column is visible to the ORM in this transaction.
+        self.env.registry._setup_models__(self.env.cr)
         self.env['crm.lead'].invalidate_model()
         assert field.name in self.env['crm.lead']._fields, (
-            "promoted field %s not registered after setup_models" % field.name)
+            "promoted field %s not registered after registry rebuild" % field.name)
         self._run_backfill(field, source_form)
 
     def _run_backfill(self, field, source_form, batch_size=500):

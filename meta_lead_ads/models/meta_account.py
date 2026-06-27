@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 import logging
 from datetime import datetime, timezone, timedelta
@@ -84,10 +84,11 @@ class MetaAccount(models.Model):
         string='Scheduler', compute='_compute_cron_status')
     cron_status_message = fields.Char(compute='_compute_cron_status')
 
-    _sql_constraints = [
-        ('account_id_uniq', 'unique(account_id)',
-         'A Meta Account with this ID already exists.'),
-    ]
+    # Odoo 19: models.Constraint replaces the removed _sql_constraints list.
+    _account_id_uniq = models.Constraint(
+        'unique(account_id)',
+        'A Meta Account with this ID already exists.',
+    )
 
     @api.depends_context('uid')
     def _compute_cron_status(self):
@@ -300,7 +301,12 @@ class MetaAccount(models.Model):
             ('summary', '=', _TOKEN_DEAD_SUMMARY),
         ])
         if not existing:
-            admins = self.env.ref('meta_lead_ads.group_meta_admin').users
+            # Odoo 19 renamed res.groups.users -> user_ids (members explicitly in
+            # this group). group_meta_admin is a leaf admin group, so its 18.0
+            # .users set was exactly its direct members; user_ids is the faithful
+            # equivalent (all_user_ids would over-broaden to members of implying
+            # groups and alert non-admins).
+            admins = self.env.ref('meta_lead_ads.group_meta_admin').user_ids
             # Assign to a Meta Admin, or fall back to the cron/current user
             # when the admin group is empty.
             self.activity_schedule(

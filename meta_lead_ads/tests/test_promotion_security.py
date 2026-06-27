@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Admin-gating tests for the promotion wizard (``meta.promote.answer``).
 
@@ -41,11 +41,11 @@ class TestPromotionSecurity(TransactionCase):
         # NOT group_meta_admin.
         self.non_admin = self.env['res.users'].create({
             'name': 'Promote NonAdmin', 'login': 'promote_nonadmin',
-            'groups_id': [(6, 0, [base_internal.id, self.user_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, self.user_group.id])]})
         # An admin who CAN build the wizard (for the S2 direct-call test).
         self.meta_admin = self.env['res.users'].create({
             'name': 'Promote Admin', 'login': 'promote_admin',
-            'groups_id': [(6, 0, [base_internal.id, self.admin_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, self.admin_group.id])]})
 
     def _form(self):
         acc = self.env['meta.account'].create({'name': 'A', 'account_id': 'A'})

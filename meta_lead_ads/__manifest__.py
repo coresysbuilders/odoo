@@ -2,11 +2,11 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 {
     'name': 'Facebook Lead Ads to CRM',
-    'version': '18.0.13.3.6',
+    'version': '19.0.1.0.0',
     'category': 'Sales/CRM',
     'license': 'OPL-1',
     'summary': 'Bring Facebook & Instagram Lead Ads straight into Odoo CRM. A '

@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 # Single idempotent ingestion service — the core of the integration.
 # Load-bearing rules: one create surface, idempotency via a DB UNIQUE
@@ -18,7 +18,7 @@ from datetime import date
 
 from psycopg2 import IntegrityError
 
-from odoo import _, api, fields, models
+from odoo import _, api, fields, models, Command
 from odoo.exceptions import ValidationError
 
 from .const import (
@@ -584,7 +584,9 @@ class MetaLeadIngest(models.AbstractModel):
                 group = self.env['res.groups'].sudo().browse(
                     int(gid)) if (gid or '').strip().isdigit() \
                     else self.env['res.groups']
-                users = group.users.filtered('active') if group.exists() \
+                # Odoo 19: res.groups.users -> user_ids (members explicitly in the
+                # group), matching the direct membership the notify target used.
+                users = group.user_ids.filtered('active') if group.exists() \
                     else self.env['res.users']
             else:
                 uid = ICP.get_param(NOTIFY_USER_PARAM)
@@ -636,7 +638,7 @@ class MetaLeadIngest(models.AbstractModel):
             'body': body,
             'reply_to': self.env.company.email_formatted or '',
             'record_name': lead.name or _("Meta Lead"),
-            'partner_ids': [(6, 0, partners.ids)],
+            'partner_ids': [Command.set(partners.ids)],
         })
         self.env['mail.notification'].sudo().create([{
             'mail_message_id': message.id,

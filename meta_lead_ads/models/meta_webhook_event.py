@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 # The durable webhook queue. The public controller verifies the HMAC over the
 # raw bytes, then hands the parsed payload to _ingest_payload, which inserts one
@@ -45,15 +45,16 @@ class MetaWebhookEvent(models.Model):
     error_message = fields.Text()              # token-free
     lead_id = fields.Many2one('crm.lead', ondelete='set null')
 
-    _sql_constraints = [
-        # Belt-and-braces: at most one queue row per leadgen_id. Meta treats
-        # leadgen_id as a globally unique lead id, and crm.lead.meta_leadgen_id
-        # already carries a global DB-UNIQUE (the ultimate idempotency guard) --
-        # so a global queue UNIQUE (not keyed per page) is correct and
-        # consistent. Do not re-key dedup to (page_id, leadgen_id).
-        ('leadgen_id_uniq', 'unique(leadgen_id)',
-         'A webhook event for this lead is already queued.'),
-    ]
+    # Belt-and-braces: at most one queue row per leadgen_id. Meta treats
+    # leadgen_id as a globally unique lead id, and crm.lead.meta_leadgen_id
+    # already carries a global DB-UNIQUE (the ultimate idempotency guard) --
+    # so a global queue UNIQUE (not keyed per page) is correct and consistent.
+    # Do not re-key dedup to (page_id, leadgen_id). Odoo 19: declared as a
+    # models.Constraint (the _sql_constraints list is no longer honoured).
+    _leadgen_id_uniq = models.Constraint(
+        'unique(leadgen_id)',
+        'A webhook event for this lead is already queued.',
+    )
 
     @api.model
     def _ingest_payload(self, data, raw=None):

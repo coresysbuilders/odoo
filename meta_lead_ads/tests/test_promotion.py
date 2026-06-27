@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Tests for promoting a captured Meta question to a custom crm.lead field.
 
@@ -51,7 +51,8 @@ class TestPromotion(TransactionCase):
         # The promote action is admin-gated via an in-method has_group check.
         # Functional tests act as a Meta admin; the non-admin rejection path is
         # covered by TestPromotionSecurity.
-        self.env.user.groups_id |= self.env.ref(
+        # Odoo 19: res.users.groups_id -> group_ids (direct group assignment).
+        self.env.user.group_ids |= self.env.ref(
             'meta_lead_ads.group_meta_admin')
         # Per-test-unique question key + its derived technical name. Unique per
         # method so the INLINE setup_models registry leak (not reverted by the

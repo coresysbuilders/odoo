@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Tests for the token-health cron on meta.account.
 
@@ -51,7 +51,7 @@ class TokenHealthFixtureMixin:
         self.admin_user = self.env['res.users'].create({
             'name': 'Meta Admin', 'login': 'meta_admin_th',
             'email': 'admin_th@example.com',
-            'groups_id': [(6, 0, [base_internal.id, self.admin_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, self.admin_group.id])]})
         self.account = self.Account.create({
             'name': 'Acct', 'account_id': 'ACC1',
             'app_id': 'app_test', 'app_secret': 'secret_test',
@@ -63,7 +63,13 @@ class TokenHealthFixtureMixin:
             ('res_model', '=', 'meta.account'), ('res_id', '=', account.id)])
 
     def _mail_for(self, account):
-        return self.Mail.search([('subject', 'ilike', account.name)])
+        # Match the _alert_token_dead alert email by its distinctive subject
+        # ("...access token invalid for <name>"). A bare `subject ilike name`
+        # also catches Odoo 19's activity-assignment notification mail (whose
+        # subject is just the record name and whose email_to is False), which
+        # is not the alert under test.
+        return self.Mail.search([
+            ('subject', 'ilike', 'access token invalid for %s' % account.name)])
 
 
 @tagged('post_install', '-at_install')
@@ -168,9 +174,10 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
         Asserts activity == 1 AND mail == 0 for this account (empty-recipient
         guard)."""
         # Empty the admin group: remove every member (incl. our seeded admin).
-        self.admin_group.users.write(
-            {'groups_id': [(3, self.admin_group.id)]})
-        self.assertFalse(self.admin_group.users)
+        # Odoo 19: res.groups.users -> user_ids (mirrors _alert_token_dead).
+        self.admin_group.user_ids.write(
+            {'group_ids': [(3, self.admin_group.id)]})
+        self.assertFalse(self.admin_group.user_ids)
         with mock.patch.object(self.AccountClass, 'action_test_connection',
                                autospec=True, side_effect=self._flip_dead()):
             self.Account._cron_token_health()

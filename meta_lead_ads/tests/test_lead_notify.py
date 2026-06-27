@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Tests for the new-lead notification setting.
 
@@ -44,11 +44,11 @@ class TestLeadNotify(IngestFixtureMixin, TransactionCase):
         self.group = self.env['res.groups'].create({'name': 'Meta Notify Test'})
         self.user_a = self.env['res.users'].create({
             'name': 'Notify A', 'login': 'notify_a',
-            'groups_id': [(4, self.group.id)],
+            'group_ids': [(4, self.group.id)],
         })
         self.user_b = self.env['res.users'].create({
             'name': 'Notify B', 'login': 'notify_b',
-            'groups_id': [(4, self.group.id)],
+            'group_ids': [(4, self.group.id)],
         })
         # Recipients prefer EMAIL — the exact production scenario that, under
         # message_notify, would route to a (failing) SMTP send and never reach

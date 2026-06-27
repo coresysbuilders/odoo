@@ -1,6 +1,6 @@
 <!--
     Apps-store description page for Meta Lead Ads Integration.
-    © 2026 CoreSys Builders. Rendered by Odoo on the module's "Module Info" /
+    &copy; 2026 CoreSys Builders. Rendered by Odoo on the module's "Module Info" /
     "Learn More" page. Styling is INLINE only (no <style> block) so it survives
     Odoo's description sanitizer unchanged. Relative image src values are rewritten
     by Odoo to /meta_lead_ads/static/description/<src>.
@@ -8,18 +8,18 @@
 
 <div style="max-width:820px;margin:0 auto;padding:0 18px;color:#23282e;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.66;">
 
-  <img src="cover.gif" alt="Facebook Lead Ads to CRM — animated overview by CoreSys Builders"
+  <img src="cover.gif" alt="Facebook Lead Ads to CRM &mdash; animated overview by CoreSys Builders"
        style="display:block;width:100%;border:1px solid #e3e6ea;border-radius:4px;margin:8px 0 4px;"/>
 
   <h1 style="font-size:30px;line-height:1.2;font-weight:700;color:#15191e;margin:30px 0 6px;letter-spacing:-.01em;">Meta Lead Ads, straight into Odoo CRM</h1>
   <div style="width:54px;height:3px;background:#1f4e79;border-radius:2px;margin:14px 0 18px;"></div>
   <p style="font-size:18px;color:#444b53;margin:0 0 12px;">Facebook and Instagram leads arrive in Odoo CRM in real time, with the campaign, ad set, ad and form that produced them. No CSV exports, no middleware.</p>
 
-  <p style="margin:12px 0;">This module connects Meta Lead Ads to your CRM through a verified webhook for real-time delivery and a scheduled backfill that re-checks every form, so a missed webhook never costs you a lead. Both paths run through a single ingestion service, so each lead is created once — never duplicated, even when Meta re-sends an event.</p>
+  <p style="margin:12px 0;">This module connects Meta Lead Ads to your CRM through a verified webhook for real-time delivery and a scheduled backfill that re-checks every form, so a missed webhook never costs you a lead. Both paths run through a single ingestion service, so each lead is created once &mdash; never duplicated, even when Meta re-sends an event.</p>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Highlights</h2>
   <p style="margin:14px 0;"><b>Real-time, with a safety net.</b> A signature-verified webhook captures leads the moment they're submitted; a backfill cron re-sweeps each form on a schedule. Exactly-once creation is enforced by a database constraint, not a best-effort check.</p>
-  <p style="margin:14px 0;"><b>Attribution you can act on.</b> Campaign, ad set, ad, form and page — names and IDs — are recorded on every lead and mapped to Odoo UTM, so you can see which ad produced which opportunity.</p>
+  <p style="margin:14px 0;"><b>Attribution you can act on.</b> Campaign, ad set, ad, form and page &mdash; names and IDs &mdash; are recorded on every lead and mapped to Odoo UTM, so you can see which ad produced which opportunity.</p>
   <p style="margin:14px 0;"><b>Careful with credentials.</b> The App Secret and access tokens are restricted to administrators. The webhook checks Meta's signature over the raw request body before parsing anything, and nothing secret is ever written to the logs.</p>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">How it works</h2>
@@ -28,11 +28,11 @@
   <p style="margin:10px 0;">Under <b>Settings &rarr; Meta Lead Ads</b>, the Connect wizard takes your App ID, App Secret and access token, validates them, and discovers your Pages and lead forms. Accounts, field mappings, sync logs and lead naming all live in one place.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/02-settings.jpg" alt="Meta Lead Ads settings in Odoo" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The settings page — connect an account, then manage accounts, mappings and logs from here.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The settings page &mdash; connect an account, then manage accounts, mappings and logs from here.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">2.</span>Check the connection</h3>
-  <p style="margin:10px 0;">Each account shows its token validity, granted scopes, whether <code>leads_retrieval</code> is in place, and whether Odoo's scheduler is running your jobs — with <b>Test Connection</b> and <b>Check Scheduler</b> buttons so you can confirm it yourself.</p>
+  <p style="margin:10px 0;">Each account shows its token validity, granted scopes, whether <code>leads_retrieval</code> is in place, and whether Odoo's scheduler is running your jobs &mdash; with <b>Test Connection</b> and <b>Check Scheduler</b> buttons so you can confirm it yourself.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/03-connection.jpg" alt="Meta account connection status" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Connection status on the account form, including a live scheduler check.</figcaption>
@@ -46,7 +46,7 @@
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">4.</span>Map the questions you care about</h3>
-  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to an existing CRM field, or promote an answer into a new field from the lead itself — the answers you collect are never discarded.</p>
+  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to an existing CRM field, or promote an answer into a new field from the lead itself &mdash; the answers you collect are never discarded.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/05-field-mapping.jpg" alt="Mapping Meta form questions to CRM fields" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Field mappings link a form question to the CRM field it should fill.</figcaption>
@@ -56,11 +56,11 @@
   <p style="margin:10px 0;">A read-only dashboard shows leads over time, lead-to-opportunity and win rates, a breakdown by campaign, and a ranking of your best performers, with health indicators for the webhook, scheduler and token.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/01-dashboard.jpg" alt="Leads analytics dashboard" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The analytics dashboard — volume, conversion and campaign performance.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The analytics dashboard &mdash; volume, conversion and campaign performance.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">6.</span>Keep an audit trail</h3>
-  <p style="margin:10px 0;">Every attempt — webhook, cron or manual — is logged with its status, trigger and the dedup key that matched. If something fails, select the row and retry; the same ingestion service re-fetches it from Meta.</p>
+  <p style="margin:10px 0;">Every attempt &mdash; webhook, cron or manual &mdash; is logged with its status, trigger and the dedup key that matched. If something fails, select the row and retry; the same ingestion service re-fetches it from Meta.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/06-sync-logs.jpg" alt="Sync logs audit trail" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Sync logs record each ingestion attempt and support a one-click retry.</figcaption>
@@ -72,9 +72,9 @@
       <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">Captured on every lead</h3>
       <ul style="margin:10px 0;padding-left:20px;">
         <li style="padding:3px 0;">Contact name, email and phone (with normalized-phone dedup)</li>
-        <li style="padding:3px 0;">Platform — Facebook or Instagram</li>
-        <li style="padding:3px 0;">Campaign, ad set and ad — names and IDs</li>
-        <li style="padding:3px 0;">Lead form and Page — names, IDs and linked records</li>
+        <li style="padding:3px 0;">Platform &mdash; Facebook or Instagram</li>
+        <li style="padding:3px 0;">Campaign, ad set and ad &mdash; names and IDs</li>
+        <li style="padding:3px 0;">Lead form and Page &mdash; names, IDs and linked records</li>
         <li style="padding:3px 0;">Meta Lead ID and the originating account</li>
         <li style="padding:3px 0;">All custom form answers, stored in full</li>
       </ul>
@@ -86,7 +86,7 @@
         <li style="padding:3px 0;">Two-layer dedup: Meta Lead ID, then email and phone</li>
         <li style="padding:3px 0;">HMAC-SHA256 verification on the raw webhook body</li>
         <li style="padding:3px 0;">Tokens and App Secret restricted to administrators</li>
-        <li style="padding:3px 0;">Get-or-create UTM mapping — no duplicate UTM records</li>
+        <li style="padding:3px 0;">Get-or-create UTM mapping &mdash; no duplicate UTM records</li>
         <li style="padding:3px 0;">Token-health alerts and a scheduler self-check</li>
       </ul>
     </div>
@@ -96,7 +96,7 @@
   <ul style="margin:12px 0;padding-left:20px;">
     <li style="padding:3px 0;">Odoo 18.0 (Community or Enterprise)</li>
     <li style="padding:3px 0;">Depends only on the standard <code>crm</code>, <code>utm</code> and <code>mail</code> modules</li>
-    <li style="padding:3px 0;">No extra Python packages — uses the bundled <code>requests</code> library</li>
+    <li style="padding:3px 0;">No extra Python packages &mdash; uses the bundled <code>requests</code> library</li>
     <li style="padding:3px 0;">A Meta Business app with a System User (or Page) token</li>
     <li style="padding:3px 0;">A publicly reachable HTTPS URL for the webhook</li>
   </ul>

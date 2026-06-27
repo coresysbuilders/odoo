@@ -11,7 +11,7 @@
     Copy is the EXACT UI-SPEC Copywriting Contract. Status pills carry a text
     label + glyph (never color-only). Icon-only controls carry aria-label.
     Sync Log (Recent) + System Health are GLOBAL — a note marks them as not
-    period-scoped. Odoo-18 markup conventions: no <tree>, no attrs.
+    period-scoped. Odoo 19 markup conventions: no <tree>, no attrs.
 -->
 <templates xml:space="preserve">
 

@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 """Test for the meta.webhook.event raw_payload PII gate.
 
@@ -26,7 +26,7 @@ class TestMetaWebhookSecurity(TransactionCase):
         user_group = self.env.ref('meta_lead_ads.group_meta_user')
         self.meta_user = self.env['res.users'].create({
             'name': 'Meta U', 'login': 'wh_meta_u',
-            'groups_id': [(6, 0, [base_internal.id, user_group.id])]})
+            'group_ids': [(6, 0, [base_internal.id, user_group.id])]})
 
     def test_raw_payload_acl(self):
         event = self.env['meta.webhook.event'].create({

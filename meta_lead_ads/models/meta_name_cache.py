@@ -2,7 +2,7 @@
 # Licensed under the Odoo Proprietary License v1.0 (OPL-1).
 # Unauthorized copying, redistribution, or resale of this software, in whole or in
 # part, via any medium, is strictly prohibited and constitutes a license violation.
-# OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
+# OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
 # Caches Meta object names (campaign/adset/ad/form ID -> name) behind a
 # concurrency-safe upsert. Campaign/ad names are commercially sensitive, so
@@ -25,11 +25,12 @@ class MetaNameCache(models.Model):
     resolved_at = fields.Datetime(default=fields.Datetime.now)
 
     # DB-level uniqueness over a Python search() — holds under
-    # webhook+cron+resend concurrency.
-    _sql_constraints = [
-        ('object_graph_uniq', 'unique(object_type, graph_id)',
-         'A cache entry for this object already exists.'),
-    ]
+    # webhook+cron+resend concurrency. Odoo 19: declared as a models.Constraint
+    # (the _sql_constraints list is no longer honoured).
+    _object_graph_uniq = models.Constraint(
+        'unique(object_type, graph_id)',
+        'A cache entry for this object already exists.',
+    )
 
     @api.model
     def _lookup(self, object_type, graph_id):
