@@ -12,21 +12,21 @@ period_mode='month')`` (implemented in Plan 02). These tests MUST fail RED now
 (the method does not exist -> ``AttributeError``) and turn GREEN once Plan 02
 adds the read-only aggregation method.
 
-What this scaffold locks (review-driven, 11-REVIEWS.md):
+What this scaffold locks:
   * period_mode (month/quarter/year/custom) is SEPARATE from the DERIVED
     bucket_granularity (day/week/month/quarter/year). There is NEVER a
-    ``create_date:custom`` (Consensus Concern 1).
+    ``create_date:custom``.
   * half-open UTC window: a record exactly at ``from`` is counted, a record
-    exactly at ``to`` is NOT (Consensus Concern 5). All fixture create_dates are
+    exactly at ``to`` is NOT. All fixture create_dates are
     written at a fixed 12:00:00 UTC so VPS-local timezone conversion never
     shifts a boundary bucket across a day boundary (C-5 timezone drift).
-  * won_rate denominator = opportunities (RESEARCH A2); "won" = a lead on a
+  * won_rate denominator = opportunities; "won" = a lead on a
     crm.stage with is_won=True, which the fixture seeds EXPLICITLY and moves
-    leads onto (Codex-HIGH won-stage validation on Odoo 18 CE).
+    leads onto.
   * min-volume guard N=10 applies to the CONVERSION ranking ONLY; the donut
-    volume list keeps ALL campaigns incl. a sub-10 one (Consensus Concern 2).
+    volume list keeps ALL campaigns incl. a sub-10 one.
   * NULL vs blank campaign: both meta_campaign_name=False and '' fall back to
-    'Unattributed' (Gemini-LOW).
+    'Unattributed'.
   * sync_recent = GLOBAL latest-5 meta.sync.log rows, INDEPENDENT of the window
     argument (Divergent: sync_recent decision; DASH-04 "last 5").
   * deltas = relative (current - prior)/prior per KPI; None when prior == 0
