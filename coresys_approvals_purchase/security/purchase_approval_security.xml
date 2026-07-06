@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<odoo>
+    <record id="rule_purchase_requester_own_request" model="ir.rule">
+        <field name="name">Approval Request: purchase requester own</field>
+        <field name="model_id" ref="coresys_approvals.model_coresys_approval_request"/>
+        <field name="groups" eval="[(4, ref('purchase.group_purchase_user'))]"/>
+        <field name="domain_force">[('create_uid', '=', user.id)]</field>
+    </record>
+
+    <record id="rule_purchase_requester_own_request_line" model="ir.rule">
+        <field name="name">Approval Request Line: purchase requester own</field>
+        <field name="model_id" ref="coresys_approvals.model_coresys_approval_request_line"/>
+        <field name="groups" eval="[(4, ref('purchase.group_purchase_user'))]"/>
+        <field name="domain_force">[('request_id.create_uid', '=', user.id)]</field>
+    </record>
+</odoo>

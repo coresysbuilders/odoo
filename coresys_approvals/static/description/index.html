@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="CoreSys Builders">
+  <title>Smart Approvals</title>
+</head>
+<body>
+<div class="csb-store" style="max-width:1080px;margin:0 auto;background:#03070F;color:#94A3B8;font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.7;">
+
+  <!-- cover -->
+  <div style="padding:0;">
+    <img src="banner.png" alt="Smart Approvals — multi-level approval chains for any Odoo document" style="display:block;width:100%;height:auto;border-radius:0;">
+  </div>
+
+  <!-- intro -->
+  <div style="padding:48px 40px 8px 40px;">
+    <div style="font-family:'JetBrains Mono',Consolas,monospace;font-size:12px;letter-spacing:0.15em;text-transform:uppercase;color:#5B8FFF;">Approval Workflow Engine</div>
+    <h1 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:800;font-size:40px;line-height:1.15;letter-spacing:-0.02em;color:#FFFFFF;margin:14px 0 18px 0;">Approvals that hold, for any Odoo document</h1>
+    <p style="font-size:17px;max-width:70ch;color:#CBD5E1;margin:0 0 10px 0;">Smart Approvals routes any record through a configurable, multi-level approval chain — enforced at the ORM boundary, recorded in an immutable audit trail, and surfaced to each approver in a personal <strong style="color:#E2E8F0;">To&nbsp;Approve</strong> inbox. Configure the process once; the engine holds the line everywhere.</p>
+    <p style="font-size:15px;max-width:70ch;color:#94A3B8;margin:0;">Built for Odoo <strong style="color:#E2E8F0;">18.0</strong> and <strong style="color:#E2E8F0;">19.0</strong> Community. The engine depends only on <code style="font-family:'JetBrains Mono',Consolas,monospace;color:#5B8FFF;">base</code> and <code style="font-family:'JetBrains Mono',Consolas,monospace;color:#5B8FFF;">mail</code> — nothing to <code style="font-family:'JetBrains Mono',Consolas,monospace;color:#5B8FFF;">pip install</code>, no build step.</p>
+  </div>
+
+  <!-- features -->
+  <div style="padding:32px 40px 8px 40px;">
+    <div style="font-family:'JetBrains Mono',Consolas,monospace;font-size:12px;letter-spacing:0.15em;text-transform:uppercase;color:#5B8FFF;margin-bottom:6px;">What it does</div>
+    <h2 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:28px;letter-spacing:-0.02em;color:#FFFFFF;margin:0 0 24px 0;">Everything an approval process actually needs</h2>
+
+    <div style="display:block;">
+      <div style="background:#0F1D30;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:28px 32px;margin-bottom:16px;">
+        <h3 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:19px;color:#FFFFFF;margin:0 0 8px 0;">Config-driven chains for any model</h3>
+        <p style="margin:0;color:#94A3B8;max-width:70ch;">Define an approval category once, give it as many sequential levels as the process needs, and point each level at an approver group or named users. No per-workflow custom development.</p>
+      </div>
+      <div style="background:#0F1D30;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:28px 32px;margin-bottom:16px;">
+        <h3 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:19px;color:#FFFFFF;margin:0 0 8px 0;">A guarded state machine</h3>
+        <p style="margin:0;color:#94A3B8;max-width:70ch;">Requests move through draft, submitted, approved, and refused along one controlled path. Any write that would skip a step or forge a decision is rejected at the ORM boundary — the process cannot be routed around from an import, a script, or a crafted context.</p>
+      </div>
+      <div style="background:#0F1D30;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:28px 32px;margin-bottom:16px;">
+        <h3 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:19px;color:#FFFFFF;margin:0 0 8px 0;">An immutable audit trail</h3>
+        <p style="margin:0;color:#94A3B8;max-width:70ch;">Each decision is a create-only response line: who acted, at which level, the outcome, and the reason. Records cannot be edited or deleted afterward, even by an administrator — exactly what an auditor expects to see.</p>
+      </div>
+      <div style="background:#0F1D30;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:28px 32px;margin-bottom:16px;">
+        <h3 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:19px;color:#FFFFFF;margin:0 0 8px 0;">Delegation with honest attribution</h3>
+        <p style="margin:0;color:#94A3B8;max-width:70ch;">An approver going on leave can delegate authority for a date window. Delegated approvals are attributed to both the delegate who acted and the original approver, so the trail stays honest.</p>
+      </div>
+      <div style="background:#0F1D30;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:28px 32px;margin-bottom:16px;">
+        <h3 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:19px;color:#FFFFFF;margin:0 0 8px 0;">A personal "To Approve" inbox</h3>
+        <p style="margin:0;color:#94A3B8;max-width:70ch;">Every approver gets a filtered list of what is waiting on them right now, backed by native Odoo to-do activities so reminders appear where users already look. Chatter on every request keeps a human-readable timeline beside the structured log.</p>
+      </div>
+      <div style="background:#0F1D30;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:28px 32px;margin-bottom:0;">
+        <h3 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:19px;color:#FFFFFF;margin:0 0 8px 0;">A Purchase Order gate, included</h3>
+        <p style="margin:0;color:#94A3B8;max-width:70ch;">The bundled Purchase bridge holds a purchase order at confirmation until its approval chain clears — a working demonstration of how the engine plugs into a real Odoo workflow, ready to use out of the box.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- screenshots (post-capture slots — PNGs added manually per SCREENSHOTS.md) -->
+  <div style="padding:32px 40px 8px 40px;">
+    <div style="font-family:'JetBrains Mono',Consolas,monospace;font-size:12px;letter-spacing:0.15em;text-transform:uppercase;color:#5B8FFF;margin-bottom:6px;">Screenshots</div>
+    <h2 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:28px;letter-spacing:-0.02em;color:#FFFFFF;margin:0 0 12px 0;">See it in action</h2>
+    <p style="font-size:15px;max-width:70ch;color:#94A3B8;margin:0 0 20px 0;">Captured from the shipped demo scenario — a mid-size buyer routing a capital-expenditure purchase order through department and finance sign-off.</p>
+    <!-- Each slot is filled with the matching PNG at listing-upload time (see SCREENSHOTS.md). -->
+    <div style="background:#0A1520;border:1px dashed rgba(91,143,255,0.35);border-radius:20px;padding:28px 32px;margin-bottom:14px;color:#CBD5E1;">The To Approve inbox — a pending capital-expenditure request awaiting the first level.</div>
+    <div style="background:#0A1520;border:1px dashed rgba(91,143,255,0.35);border-radius:20px;padding:28px 32px;margin-bottom:14px;color:#CBD5E1;">The approval category form — target document, condition, and the two ordered levels.</div>
+    <div style="background:#0A1520;border:1px dashed rgba(91,143,255,0.35);border-radius:20px;padding:28px 32px;margin-bottom:14px;color:#CBD5E1;">A held purchase order — the Approval stat button showing the To Approve state after Confirm.</div>
+    <div style="background:#0A1520;border:1px dashed rgba(91,143,255,0.35);border-radius:20px;padding:28px 32px;margin-bottom:0;color:#CBD5E1;">The Decision History tab — the immutable trail of each decision, with who decided and when.</div>
+  </div>
+
+  <!-- supported versions -->
+  <div style="padding:32px 40px 8px 40px;">
+    <div style="font-family:'JetBrains Mono',Consolas,monospace;font-size:12px;letter-spacing:0.15em;text-transform:uppercase;color:#5B8FFF;margin-bottom:6px;">Compatibility</div>
+    <h2 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:28px;letter-spacing:-0.02em;color:#FFFFFF;margin:0 0 20px 0;">Supported series</h2>
+    <div style="background:#0F1D30;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:8px 32px;">
+      <p style="margin:16px 0;color:#CBD5E1;border-bottom:1px solid rgba(255,255,255,0.07);padding-bottom:16px;"><strong style="color:#FFFFFF;">Odoo 18.0 Community</strong> &nbsp;·&nbsp; Supported</p>
+      <p style="margin:16px 0;color:#CBD5E1;padding-bottom:0;"><strong style="color:#FFFFFF;">Odoo 19.0 Community</strong> &nbsp;·&nbsp; Supported</p>
+    </div>
+    <p style="font-size:14px;color:#94A3B8;margin:16px 0 0 0;">Installs by copying into your addons path — no external dependencies, no <code style="font-family:'JetBrains Mono',Consolas,monospace;color:#5B8FFF;">requirements.txt</code>.</p>
+  </div>
+
+  <!-- support / footer -->
+  <div style="padding:32px 40px 48px 40px;">
+    <div style="background:#06152C;border:1px solid rgba(0,82,254,0.30);border-radius:20px;padding:32px;text-align:left;">
+      <h2 style="font-family:'Outfit',system-ui,'Segoe UI',sans-serif;font-weight:700;font-size:22px;color:#FFFFFF;margin:0 0 8px 0;">Support &amp; licensing</h2>
+      <p style="margin:0 0 4px 0;color:#CBD5E1;">Questions, licensing, or help with a rollout — <a href="https://coresysbuilders.com" style="color:#5B8FFF;text-decoration:none;">coresysbuilders.com</a>.</p>
+      <p style="margin:0;color:#94A3B8;font-size:14px;">CoreSys Builders — Smart Approvals. Licensed OPL-1.</p>
+    </div>
+  </div>
+
+</div>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+</body>
+</html>
