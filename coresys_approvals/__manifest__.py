@@ -1,0 +1,30 @@
+# CoreSys Builders — https://coresysbuilders.com
+# Copyright (C) CoreSys Builders. License OPL-1.
+{
+    'name': 'Smart Approvals',
+    'summary': 'Route any Odoo document through multi-level approvals, with delegation and a complete audit trail',
+    'version': '18.0.1.0.0',
+    'license': 'OPL-1',
+    'author': 'CoreSys Builders',
+    'company': 'CoreSys Builders',
+    'website': 'https://coresysbuilders.com',
+    'category': 'Human Resources/Approvals',
+    'depends': ['base', 'mail'],
+    'data': [
+        'security/approval_groups.xml',
+        'security/ir.model.access.csv',
+        'security/approval_security.xml',
+        'data/approval_activity_data.xml',
+        'data/approval_delegation_data.xml',
+        'views/approval_category_views.xml',
+        'views/approval_request_views.xml',
+        'views/approval_delegation_views.xml',
+        'views/approval_menus.xml',
+    ],
+    'demo': ['demo/approvals_demo.xml'],
+    'images': ['static/description/banner.png'],
+    'price': 39.0,
+    'currency': 'EUR',
+    'application': True,
+    'installable': True,
+}

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<odoo>
+    <record id="view_approval_category_list" model="ir.ui.view">
+        <field name="name">coresys.approval.category.list</field>
+        <field name="model">coresys.approval.category</field>
+        <field name="arch" type="xml">
+            <list string="Approval Categories">
+                <field name="name"/>
+                <field name="model_id"/>
+                <field name="company_id" optional="show" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_approval_category_form" model="ir.ui.view">
+        <field name="name">coresys.approval.category.form</field>
+        <field name="model">coresys.approval.category</field>
+        <field name="arch" type="xml">
+            <form string="Approval Category">
+                <sheet>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Purchase Orders over 5,000"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Definition">
+                            <field name="model_id" options="{'no_create': True}"/>
+                            <field name="model_name" invisible="1"/>
+                            <field name="domain" widget="domain"
+                                   options="{'model': 'model_name', 'foldable': True}"/>
+                        </group>
+                        <group string="Options">
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="allow_self_approval" widget="boolean_toggle"/>
+                        </group>
+                    </group>
+                    <group string="Approval Levels">
+                        <field name="level_ids" nolabel="1">
+                            <list string="Approval Levels" editable="bottom">
+                                <field name="sequence" widget="handle"/>
+                                <field name="name"/>
+                                <field name="approver_group_id"/>
+                                <field name="approver_user_ids" widget="many2many_tags"/>
+                            </list>
+                        </field>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+</odoo>

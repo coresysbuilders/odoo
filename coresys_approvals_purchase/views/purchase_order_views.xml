@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<odoo>
+    <record id="purchase_order_form_approval" model="ir.ui.view">
+        <field name="name">purchase.order.form.approval</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_submit_for_approval"
+                        type="object"
+                        class="oe_stat_button"
+                        icon="fa-check-circle"
+                        groups="purchase.group_purchase_user"
+                        invisible="approval_state == 'approved' or state in ['purchase', 'done', 'cancel']">
+                    <span class="o_stat_text">Submit for Approval</span>
+                </button>
+                <button class="oe_stat_button"
+                        icon="fa-hourglass-half"
+                        groups="purchase.group_purchase_user,coresys_approvals.group_approval_user"
+                        invisible="not approval_state">
+                    <field name="approval_state" widget="statinfo" string="Approval"/>
+                </button>
+            </xpath>
+        </field>
+    </record>
+</odoo>
