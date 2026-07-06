@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<odoo>
+    <record id="rule_approval_category_company" model="ir.rule">
+        <field name="name">Approval Category: company scope</field>
+        <field name="model_id" ref="model_coresys_approval_category"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_approval_level_company" model="ir.rule">
+        <field name="name">Approval Level: company scope</field>
+        <field name="model_id" ref="model_coresys_approval_level"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_approval_request_company" model="ir.rule">
+        <field name="name">Approval Request: company scope</field>
+        <field name="model_id" ref="model_coresys_approval_request"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_approval_request_own" model="ir.rule">
+        <field name="name">Approval Request: own, routed or decided</field>
+        <field name="model_id" ref="model_coresys_approval_request"/>
+        <field name="groups" eval="[(4, ref('group_approval_user'))]"/>
+        <field name="domain_force">['|', '|', ('requester_id', '=', user.id), ('active_approver_user_ids', 'in', user.id), ('response_ids.user_id', '=', user.id)]</field>
+    </record>
+
+    <record id="rule_approval_request_manager_all" model="ir.rule">
+        <field name="name">Approval Request: manager full visibility</field>
+        <field name="model_id" ref="model_coresys_approval_request"/>
+        <field name="groups" eval="[(4, ref('group_approval_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+
+    <record id="rule_approval_request_line_company" model="ir.rule">
+        <field name="name">Approval Request Line: company scope</field>
+        <field name="model_id" ref="model_coresys_approval_request_line"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_approval_request_line_own" model="ir.rule">
+        <field name="name">Approval Request Line: own, routed or decided</field>
+        <field name="model_id" ref="model_coresys_approval_request_line"/>
+        <field name="groups" eval="[(4, ref('group_approval_user'))]"/>
+        <field name="domain_force">['|', '|', ('request_id.requester_id', '=', user.id), ('request_id.active_approver_user_ids', 'in', user.id), ('request_id.response_ids.user_id', '=', user.id)]</field>
+    </record>
+
+    <record id="rule_approval_request_line_manager_all" model="ir.rule">
+        <field name="name">Approval Request Line: manager full visibility</field>
+        <field name="model_id" ref="model_coresys_approval_request_line"/>
+        <field name="groups" eval="[(4, ref('group_approval_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+
+    <record id="rule_approval_response_company" model="ir.rule">
+        <field name="name">Approval Decision Record: company scope</field>
+        <field name="model_id" ref="model_coresys_approval_response"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_approval_response_own" model="ir.rule">
+        <field name="name">Approval Decision Record: own, routed or decided</field>
+        <field name="model_id" ref="model_coresys_approval_response"/>
+        <field name="groups" eval="[(4, ref('group_approval_user'))]"/>
+        <field name="domain_force">['|', '|', ('request_id.requester_id', '=', user.id), ('request_id.active_approver_user_ids', 'in', user.id), ('request_id.response_ids.user_id', '=', user.id)]</field>
+    </record>
+
+    <record id="rule_approval_response_manager_all" model="ir.rule">
+        <field name="name">Approval Decision Record: manager full visibility</field>
+        <field name="model_id" ref="model_coresys_approval_response"/>
+        <field name="groups" eval="[(4, ref('group_approval_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+
+    <record id="rule_delegation_company" model="ir.rule">
+        <field name="name">Approval Delegation: company scope</field>
+        <field name="model_id" ref="model_coresys_approval_delegation"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="rule_delegation_own_manage" model="ir.rule">
+        <field name="name">Approval Delegation: manage own</field>
+        <field name="model_id" ref="model_coresys_approval_delegation"/>
+        <field name="groups" eval="[(4, ref('group_approval_approver'))]"/>
+        <field name="domain_force">[('delegator_id', '=', user.id)]</field>
+    </record>
+
+    <record id="rule_delegation_as_delegate_read" model="ir.rule">
+        <field name="name">Approval Delegation: visible to delegate</field>
+        <field name="model_id" ref="model_coresys_approval_delegation"/>
+        <field name="groups" eval="[(4, ref('group_approval_user'))]"/>
+        <field name="domain_force">[('delegate_id', '=', user.id)]</field>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="False"/>
+        <field name="perm_create" eval="False"/>
+        <field name="perm_unlink" eval="False"/>
+    </record>
+
+    <record id="rule_delegation_manager_all" model="ir.rule">
+        <field name="name">Approval Delegation: manager full visibility</field>
+        <field name="model_id" ref="model_coresys_approval_delegation"/>
+        <field name="groups" eval="[(4, ref('group_approval_manager'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+</odoo>

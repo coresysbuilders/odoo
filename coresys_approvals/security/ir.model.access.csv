@@ -1,0 +1,22 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_approval_category_user,coresys.approval.category user,model_coresys_approval_category,group_approval_user,1,0,0,0
+access_approval_category_approver,coresys.approval.category approver,model_coresys_approval_category,group_approval_approver,1,0,0,0
+access_approval_category_manager,coresys.approval.category manager,model_coresys_approval_category,group_approval_manager,1,1,1,1
+access_approval_level_user,coresys.approval.level user,model_coresys_approval_level,group_approval_user,1,0,0,0
+access_approval_level_approver,coresys.approval.level approver,model_coresys_approval_level,group_approval_approver,1,0,0,0
+access_approval_level_manager,coresys.approval.level manager,model_coresys_approval_level,group_approval_manager,1,1,1,1
+access_approval_request_user,coresys.approval.request user,model_coresys_approval_request,group_approval_user,1,1,1,0
+access_approval_request_approver,coresys.approval.request approver,model_coresys_approval_request,group_approval_approver,1,1,0,0
+access_approval_request_manager,coresys.approval.request manager,model_coresys_approval_request,group_approval_manager,1,1,1,1
+access_approval_request_line_user,coresys.approval.request.line user,model_coresys_approval_request_line,group_approval_user,1,0,0,0
+access_approval_request_line_approver,coresys.approval.request.line approver,model_coresys_approval_request_line,group_approval_approver,1,0,0,0
+access_approval_request_line_manager,coresys.approval.request.line manager,model_coresys_approval_request_line,group_approval_manager,1,0,0,0
+access_approval_response_user,coresys.approval.response user,model_coresys_approval_response,group_approval_user,1,0,0,0
+access_approval_response_approver,coresys.approval.response approver,model_coresys_approval_response,group_approval_approver,1,0,0,0
+access_approval_response_manager,coresys.approval.response manager,model_coresys_approval_response,group_approval_manager,1,0,0,0
+access_ir_model_approval_user,ir.model approval read,base.model_ir_model,group_approval_user,1,0,0,0
+access_ir_model_fields_approval_user,ir.model.fields approval read,base.model_ir_model_fields,group_approval_user,1,0,0,0
+access_ir_model_fields_selection_approval_user,ir.model.fields.selection approval read,base.model_ir_model_fields_selection,group_approval_user,1,0,0,0
+access_approval_delegation_user,coresys.approval.delegation user,model_coresys_approval_delegation,group_approval_user,1,0,0,0
+access_approval_delegation_approver,coresys.approval.delegation approver,model_coresys_approval_delegation,group_approval_approver,1,1,1,1
+access_approval_delegation_manager,coresys.approval.delegation manager,model_coresys_approval_delegation,group_approval_manager,1,1,1,1
