@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<odoo>
+    <data noupdate="1">
+
+        <!-- Ranborne Equipment Co. — a regional industrial-equipment distributor.
+             Three staff members who take part in the approval flow. Group
+             membership is assigned through group_ids (the 19.0 field name). -->
+
+        <record id="demo_user_buyer" model="res.users">
+            <field name="name">Martin Weber</field>
+            <field name="login">martin.weber@ranborne-equipment.com</field>
+            <field name="email">martin.weber@ranborne-equipment.com</field>
+            <field name="group_ids" eval="[(4, ref('coresys_approvals.group_approval_user'))]"/>
+        </record>
+
+        <record id="demo_user_dept_manager" model="res.users">
+            <field name="name">Claire Devine</field>
+            <field name="login">claire.devine@ranborne-equipment.com</field>
+            <field name="email">claire.devine@ranborne-equipment.com</field>
+            <field name="group_ids" eval="[(4, ref('coresys_approvals.group_approval_approver'))]"/>
+        </record>
+
+        <record id="demo_user_finance_director" model="res.users">
+            <field name="name">Harold Nkemelu</field>
+            <field name="login">harold.nkemelu@ranborne-equipment.com</field>
+            <field name="email">harold.nkemelu@ranborne-equipment.com</field>
+            <field name="group_ids" eval="[(4, ref('coresys_approvals.group_approval_manager'))]"/>
+        </record>
+
+        <!-- Engine-only scenario, safe on a base+mail install: a two-step sign-off
+             for onboarding a new business contact (res.partner). No purchase or
+             catalogue records are referenced here. -->
+
+        <record id="demo_category_vendor_onboarding" model="coresys.approval.category">
+            <field name="name">New Vendor Onboarding</field>
+            <field name="model_id" ref="base.model_res_partner"/>
+            <field name="allow_self_approval" eval="False"/>
+        </record>
+
+        <record id="demo_level_vendor_manager" model="coresys.approval.level">
+            <field name="name">Department Manager</field>
+            <field name="sequence">10</field>
+            <field name="category_id" ref="demo_category_vendor_onboarding"/>
+            <field name="approver_user_ids" eval="[(4, ref('coresys_approvals.demo_user_dept_manager'))]"/>
+        </record>
+
+        <record id="demo_level_vendor_finance" model="coresys.approval.level">
+            <field name="name">Finance Director</field>
+            <field name="sequence">20</field>
+            <field name="category_id" ref="demo_category_vendor_onboarding"/>
+            <field name="approver_user_ids" eval="[(4, ref('coresys_approvals.demo_user_finance_director'))]"/>
+        </record>
+
+    </data>
+</odoo>

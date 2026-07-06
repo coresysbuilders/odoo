@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<odoo>
+    <record id="module_category_approvals" model="ir.module.category">
+        <field name="name">Approvals</field>
+        <field name="description">Access levels for the multi-level approval workflow.</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <record id="privilege_approvals" model="res.groups.privilege">
+        <field name="name">Approvals</field>
+        <field name="sequence">20</field>
+        <field name="category_id" ref="module_category_approvals"/>
+    </record>
+
+    <record id="group_approval_user" model="res.groups">
+        <field name="name">Approval User</field>
+        <field name="privilege_id" ref="privilege_approvals"/>
+    </record>
+
+    <record id="group_approval_approver" model="res.groups">
+        <field name="name">Approval Approver</field>
+        <field name="privilege_id" ref="privilege_approvals"/>
+        <field name="implied_ids" eval="[(4, ref('group_approval_user'))]"/>
+    </record>
+
+    <record id="group_approval_manager" model="res.groups">
+        <field name="name">Approval Manager</field>
+        <field name="privilege_id" ref="privilege_approvals"/>
+        <field name="implied_ids" eval="[(4, ref('group_approval_approver'))]"/>
+    </record>
+</odoo>

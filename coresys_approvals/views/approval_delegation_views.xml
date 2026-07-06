@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CoreSys Builders — https://coresysbuilders.com | License OPL-1 -->
+<odoo>
+    <record id="view_approval_delegation_list" model="ir.ui.view">
+        <field name="name">coresys.approval.delegation.list</field>
+        <field name="model">coresys.approval.delegation</field>
+        <field name="arch" type="xml">
+            <list string="My Delegations">
+                <field name="delegator_id"/>
+                <field name="delegate_id"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+                <field name="category_id"/>
+                <field name="company_id" optional="show" groups="base.group_multi_company"/>
+                <field name="active" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_approval_delegation_form" model="ir.ui.view">
+        <field name="name">coresys.approval.delegation.form</field>
+        <field name="model">coresys.approval.delegation</field>
+        <field name="arch" type="xml">
+            <form string="Delegation">
+                <sheet>
+                    <group>
+                        <group string="Handover">
+                            <field name="delegator_id"/>
+                            <field name="delegate_id"/>
+                        </group>
+                        <group string="Window">
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                        </group>
+                        <group string="Scope">
+                            <field name="category_id" options="{'no_create': True}"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Status">
+                            <field name="active" widget="boolean_toggle"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_approval_delegation" model="ir.actions.act_window">
+        <field name="name">My Delegations</field>
+        <field name="res_model">coresys.approval.delegation</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('delegator_id', '=', uid)]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Hand your approval authority to a colleague
+            </p>
+            <p>
+                Create a delegation to let another approver decide on your behalf
+                for a set period. Choose the delegate, the dates it runs, and
+                optionally limit it to a single approval category.
+            </p>
+        </field>
+    </record>
+</odoo>
