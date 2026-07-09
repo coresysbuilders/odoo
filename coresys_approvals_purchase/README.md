@@ -3,9 +3,9 @@
 
 # Smart Approvals — Purchase Order Bridge
 
-This module (`coresys_approvals_purchase`) is the Purchase Order bridge of the bundled
-**Smart Approvals** product. It ships together with the core engine,
-`coresys_approvals`, and is not sold on its own.
+This module (`coresys_approvals_purchase`) is the Purchase Order add-on for the
+**Smart Approvals** engine. It requires the core engine, `coresys_approvals`, and is
+published as a separate listing on the Odoo Apps store.
 
 It gates purchase order confirmation through the Smart Approvals engine: a purchase
 order that falls under an approval category must be approved before it can be confirmed.

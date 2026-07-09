@@ -1,6 +1,6 @@
 <!--
-    Apps-store description page for Smart Approvals (coresys_approvals + the bundled
-    Purchase bridge). © 2026 CoreSys Builders. Rendered by Odoo on the module's
+    Apps-store description page for Smart Approvals (coresys_approvals), the approval
+    engine. © 2026 CoreSys Builders. Rendered by Odoo on the module's
     "Module Info" / "Learn More" page. Styling is INLINE only (no <style> block) so
     it survives Odoo's description sanitizer unchanged. Relative image src values are
     rewritten by Odoo to /coresys_approvals/static/description/<src>.
@@ -15,7 +15,7 @@
   <div style="width:54px;height:3px;background:#1f4e79;border-radius:2px;margin:14px 0 18px;"></div>
   <p style="font-size:18px;color:#444b53;margin:0 0 12px;">Route any record through a configurable, multi-level approval chain &mdash; enforced at the ORM boundary, recorded in an immutable audit trail, and surfaced to each approver in a personal <b>To&nbsp;Approve</b> inbox. Configure the process once; the engine holds the line everywhere.</p>
 
-  <p style="margin:12px 0;">Smart Approvals is an approval <i>engine</i>, not a single hard-wired workflow. Define a category for any model &mdash; purchase orders, expenses, a custom document &mdash; give it as many sequential levels as the process needs, and the engine gates the record until every level has signed off. The bundled Purchase bridge is included and ready to use, so you can see it working the moment you install.</p>
+  <p style="margin:12px 0;">Smart Approvals is an approval <i>engine</i>, not a single hard-wired workflow. Define a category for any model &mdash; purchase orders, expenses, a custom document &mdash; give it as many sequential levels as the process needs, and the engine gates the record until every level has signed off. A companion <b>Approvals for Purchase</b> add-on (a separate free download) turns on a ready-made purchase-order gate the moment you install it.</p>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Highlights</h2>
   <p style="margin:14px 0;"><b>Config-driven chains for any model.</b> Define an approval category once, add as many ordered levels as you need, and point each level at an approver group or named users. An optional condition &mdash; for example, only orders above a set amount &mdash; decides when approval kicks in. No per-workflow custom development.</p>
@@ -83,7 +83,7 @@
         <li style="padding:3px 0;">Approver groups <i>and</i> named approvers per level</li>
         <li style="padding:3px 0;">A personal To&nbsp;Approve inbox with native to-do activities</li>
         <li style="padding:3px 0;">Delegation for a date window, attributed to both parties</li>
-        <li style="padding:3px 0;">A bundled Purchase Order gate, ready out of the box</li>
+        <li style="padding:3px 0;">A ready-made Purchase Order gate via the free add-on</li>
       </ul>
     </div>
     <div style="flex:1 1 300px;min-width:0;">
@@ -103,12 +103,12 @@
   <ul style="margin:12px 0;padding-left:20px;">
     <li style="padding:3px 0;">Odoo 18.0 or 19.0 (Community or Enterprise)</li>
     <li style="padding:3px 0;">The engine depends only on the standard <code>base</code> and <code>mail</code> modules</li>
-    <li style="padding:3px 0;">The optional Purchase bridge adds a dependency on the standard <code>purchase</code> module</li>
+    <li style="padding:3px 0;">The optional Purchase add-on (a separate free download) adds a dependency on the standard <code>purchase</code> module</li>
     <li style="padding:3px 0;">No extra Python packages and no build step &mdash; installs by copying into your addons path</li>
   </ul>
 
   <div style="border-left:3px solid #c9a227;background:#fbf8ef;padding:12px 16px;margin:16px 0;border-radius:0 4px 4px 0;">
-    <p style="margin:0;font-size:15px;color:#5c5436;line-height:1.6;">Two modules, one listing. <b>Smart Approvals</b> is the engine; <b>Approvals for Purchase</b> is a thin bridge that gates purchase-order confirmation through it. Install the engine on its own to approve any document, or add the bridge for a working purchase gate on day one.</p>
+    <p style="margin:0;font-size:15px;color:#5c5436;line-height:1.6;">One engine, optional add-ons. <b>Smart Approvals</b> is the engine that approves any document. <b>Approvals for Purchase</b> is a separate free download that gates purchase-order confirmation through it &mdash; install the engine on its own, or add the Purchase add-on for a working purchase gate on day one.</p>
   </div>
 
   <hr style="border:0;border-top:1px solid #e6e9ec;margin:36px 0 18px;"/>

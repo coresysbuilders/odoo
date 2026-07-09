@@ -16,5 +16,6 @@
         'views/purchase_order_views.xml',
     ],
     'demo': ['demo/purchase_approval_demo.xml'],
+    'images': ['static/description/banner.png'],
     'installable': True,
 }
