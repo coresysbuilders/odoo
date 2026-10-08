@@ -2,18 +2,10 @@
 // Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
 // redistribution, or resale, in whole or in part, via any medium, is prohibited.
 //
-// Coresys-brand styling for the Leads Analytics Dashboard.
+// Leads Analytics Dashboard styles, in CoreSys brand colours.
 //
-// Tokens from branding/coresys_branding_colors.txt + 11-UI-SPEC.md:
-//   accent  #0052FE  (line series, selected donut, active selector, links)
-//   ink     #06152C  (titles, KPI values, body text)
-//   secondary #E4EEFC (KPI tile bg, header strips, zebra)
-//   surface #FFFFFF
-//   semantic: positive #1E9E5A | warning #D9822B | destructive #D64545
-//
-// Spacing scale (8-pt): xs 4 / sm 8 / md 16 / lg 24 / xl 32 / 2xl 48 / 3xl 64.
-// Typography: KPI value 28/600, card title 20/600, body 14/400, label 12/600.
-// Chart geometry constants: line canvas 280px, donut 240px, KPI tile min 120px.
+// accent: chart lines, active buttons, links. ink: text. secondary: tile
+// backgrounds and table stripes. Spacing follows an 8px scale.
 //
 
 $meta-accent: #0052fe;
@@ -345,7 +337,7 @@ $meta-sp-3xl: 64px;
         opacity: 0.8;
     }
 
-    // ---------- Status pills (text + color; never color-only) ----------
+    // ---------- Status pills (always paired with a text label) ----------
     .o_meta_pill {
         display: inline-block;
         padding: 2px $meta-sp-sm;

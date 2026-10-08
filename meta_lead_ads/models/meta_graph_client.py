@@ -4,13 +4,9 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-# Meta Graph API transport for an Odoo AbstractModel: pinned version,
-# envelope-based error classification, and payload-first name resolution.
-# This is the only place a Graph URL is built and the only consumer of
-# GRAPH_VERSION.
-#
-# Transport only — no retry/backoff here. Endpoint methods reuse the private
-# _request helper.
+# Meta Graph API transport. Every Graph URL in the module is built here, against
+# the pinned GRAPH_VERSION. Errors are classified from the response envelope into
+# typed exceptions. No retry or backoff at this level; callers decide.
 import hashlib
 import hmac
 import json
@@ -20,10 +16,8 @@ import requests
 
 from odoo import api, models
 
-# GRAPH_VERSION is imported, but the URL is built from
-# ``const.GRAPH_VERSION`` so the pinned version is read at call time: tests
-# patch ``const.GRAPH_VERSION`` and the built URL must follow, so no version
-# is hardcoded here.
+# The URL reads const.GRAPH_VERSION at call time (not the imported name) so
+# tests can patch the version and the built URL follows.
 from . import const
 from .const import GRAPH_VERSION, CONNECT_TIMEOUT, READ_TIMEOUT, GRAPH_BASE  # noqa: F401
 from .exceptions import (
@@ -39,23 +33,18 @@ _SENSITIVE_PARAM_KEYS = {
     'fb_exchange_token',
 }
 
-# Graph throttle codes. 80006 = LeadGen form throttle, 80001 = Page/system-user
-# throttle — both must be included, since a misclassified LeadGen throttle would
-# skip backoff and burn the quota.
+# Graph throttle codes. 80006 is the LeadGen form throttle and 80001 the
+# Page/system-user one; missing either would skip backoff and burn the quota.
 RATE_LIMIT_CODES = {4, 17, 32, 613, 80001, 80006}
 AUTH_CODE = 190
 
-# Hard ceiling on pages followed in a single _iter_paged sweep — a backstop
-# against a non-terminating cursor. Far above any realistic page count for the
-# edges we read (forms, leads, pages, subscribed_apps).
+# Cap on pages per _iter_paged sweep, in case a cursor never terminates. Far
+# above anything the forms/leads/pages edges return in practice.
 _MAX_PAGES = 1000
 
 
 def _redact(params):
-    """Return a COPY of ``params`` with secret-bearing values masked.
-
-    Never mutates the caller's dict, to avoid leaking secrets.
-    """
+    """Return a copy of ``params`` with secret values masked as '***'."""
     safe = dict(params or {})
     for key in list(safe):
         lowered = str(key or '').lower()
@@ -66,13 +55,11 @@ def _redact(params):
 
 
 def _buc_minutes(buc_header):
-    """Parse the ``X-Business-Use-Case-Usage`` header for the backoff hint.
+    """Return the largest backoff hint (minutes) in X-Business-Use-Case-Usage.
 
-    The header is a JSON STRING: an object keyed by BUC/app/page id whose values
-    are LISTS of dicts; each dict may carry ``estimated_time_to_regain_access``
-    (minutes). Walk it defensively and return the MAX minute hint found, or
-    ``None`` when the header is absent/malformed/partial. This must not raise;
-    the caller keeps the raw header on the exception regardless.
+    The header is a JSON string: an object keyed by BUC/app/page id, each value
+    a list of dicts that may carry ``estimated_time_to_regain_access``. Returns
+    None when the header is missing or malformed; never raises.
     """
     if not buc_header:
         return None
@@ -98,11 +85,9 @@ class MetaGraphClient(models.AbstractModel):
     _name = 'meta.graph.client'
     _description = 'Meta Graph API transport (pinned version, isolated outbound HTTP)'
 
-    # Process-shared singleton Session (lazily created). It sets no default
-    # headers and no cookies and is never mutated per request: the access_token
-    # travels only as a per-call ``params`` value, so concurrent GETs across
-    # Odoo workers/threads are safe (the Session stays immutable; threading.local
-    # is not required). Pooled connections survive across calls within a worker.
+    # One lazily created Session per process. It never carries headers, cookies
+    # or the token (that goes in per-call params), so sharing it across threads
+    # is safe and we keep connection pooling.
     _session = None
 
     @api.model
@@ -115,25 +100,17 @@ class MetaGraphClient(models.AbstractModel):
     @api.model
     def _request(self, token, path, params=None, method='GET',
                  app_secret=None, inject_token=True):
-        """Issue one Graph call against the pinned-version base URL.
+        """Make one Graph call against the pinned-version base URL.
 
-        Path is validated first so callers cannot smuggle a full URL/query
-        string to bypass GRAPH_BASE/GRAPH_VERSION. The token is copied onto a
-        private params dict (never the caller's), travels only as a query param,
-        is never set on the Session, never logged, and is scrubbed from any
-        re-raised transport error.
+        The path must be bare (no URL, query or traversal), so a stored or
+        payload id can't redirect the call elsewhere. The token only travels as
+        a query param on a private copy of ``params`` and is never logged or
+        left in a re-raised transport error.
         """
-        # Validate the path first: reject empty paths, full URLs, and smuggled
-        # query strings. As defense-in-depth, also reject a '#' fragment (which
-        # would silently drop the rest of the path before it reaches the
-        # server), a backslash, any whitespace, '..' dot-segments, and '%'
-        # percent-encoding. Without the last two a stored/payload id like
-        # '../../debug_token' would normalize off the pinned /vXX.0 version once
-        # requests builds the URL, and '%2e%2e'/'%2f' would smuggle the same
-        # traversal in encoded form. None of these appear in a legitimate bare
-        # path (numeric ids / edges like 'me/accounts', '<id>/leads',
-        # 'oauth/access_token'), so this only blocks smuggling attempts without
-        # affecting any real caller.
+        # '..' and '%' matter: an id like '../../debug_token' (or its
+        # %2e%2e/%2f form) would step off the pinned /vXX.0 once requests
+        # normalises the URL. '#' would silently cut the path short. No real
+        # caller passes any of these characters.
         if (not path or '://' in path or '?' in path or '#' in path
                 or '\\' in path or '..' in path or '%' in path
                 or any(c.isspace() for c in path)):
@@ -144,17 +121,13 @@ class MetaGraphClient(models.AbstractModel):
 
         url = '%s/%s/%s' % (GRAPH_BASE, const.GRAPH_VERSION, path.lstrip('/'))
 
-        # COPY before injecting the token — never mutate the caller's dict.
         safe_params = dict(params or {})
         if inject_token:
             safe_params['access_token'] = token
 
-        # appsecret_proof: HMAC-SHA256 of this call's access_token keyed by the
-        # App Secret. Computed from the exact ``token`` arg so the proof always
-        # matches the sent token. The proof itself is non-secret; _redact still
-        # masks access_token. Only added when an App Secret is supplied. The proof
-        # is keyed on the real token even when inject_token=False, so a signed
-        # tokenless call stays valid.
+        # appsecret_proof = HMAC-SHA256(token, app secret). Computed from the
+        # token argument even when inject_token=False, so it always matches the
+        # token Meta sees. The proof itself is not secret.
         if app_secret:
             safe_params['appsecret_proof'] = hmac.new(
                 app_secret.encode('utf-8'),
@@ -162,37 +135,30 @@ class MetaGraphClient(models.AbstractModel):
                 hashlib.sha256,
             ).hexdigest()
 
-        # Log only method + path + redacted params (access_token masked to ***).
-        # The built request target and the raw token are never logged — the
-        # token lives in the querystring.
+        # Log the path, not the URL: the URL's query string holds the token.
         redacted = _redact(safe_params)
         _logger.debug('Graph %s %s params=%s', method, path, redacted)
 
         try:
             resp = self._get_session().request(
                 method, url, params=safe_params,
-                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),   # enforced on every call
+                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
             )
         except requests.RequestException:
-            # Any requests error (ConnectionError/Timeout and siblings such as
-            # TooManyRedirects/ContentDecodingError/ChunkedEncodingError/InvalidURL)
-            # embeds the full URL — including the access_token query param — in
-            # its message/args. Catch the base class and re-raise a token-free
-            # message, dropping the chained cause (from None) so the secret never
-            # leaks via a propagated traceback.
+            # requests errors embed the full URL, token included, in their
+            # args. Re-raise with a clean message and drop the cause (from None)
+            # so the token can't leak through a traceback.
             raise MetaTransientError(
                 'Transient transport error for path %s' % path) from None
         return self._handle_response(resp)
 
     @api.model
     def _handle_response(self, resp):
-        """Envelope-dominant classification into the typed exception hierarchy.
+        """Return the JSON body, or raise the matching typed Meta exception.
 
-        Order: parse JSON defensively -> if an error envelope is present,
-        classify by the envelope regardless of HTTP status (190 first, then the
-        throttle set, then is_transient, else permanent) -> success -> otherwise
-        classify by transport status. A raw ValueError/JSONDecodeError never
-        escapes this method. No retry/backoff here.
+        An error envelope wins over the HTTP status: code 190 is auth, then the
+        throttle codes, then is_transient, else permanent. Without an envelope
+        the HTTP status decides. A JSON decode error never escapes.
         """
         try:
             body = resp.json()
@@ -209,8 +175,8 @@ class MetaGraphClient(models.AbstractModel):
             euser_msg = err.get('error_user_msg')
             transient = err.get('is_transient')
 
-            # 190 checked first — token death even on a 200/429 body is auth,
-            # never a transient blip (otherwise leads are silently lost).
+            # 190 first: a dead token is auth even on a 200/429. Treating it as
+            # transient would retry forever and lose leads.
             if code == AUTH_CODE:
                 raise MetaAuthError(
                     err.get('message'), code=code, subcode=subcode,
@@ -222,7 +188,7 @@ class MetaGraphClient(models.AbstractModel):
                 raise MetaRateLimitError(
                     err.get('message'), code=code, subcode=subcode,
                     app_usage=resp.headers.get('X-App-Usage'),
-                    buc_usage=buc,                      # raw header kept
+                    buc_usage=buc,
                     retry_after_min=_buc_minutes(buc),
                     fbtrace_id=fbtrace, error_type=etype,
                     error_user_title=euser_title, error_user_msg=euser_msg,
@@ -231,10 +197,9 @@ class MetaGraphClient(models.AbstractModel):
                 raise MetaTransientError(
                     err.get('message'), code=code, subcode=subcode,
                     fbtrace_id=fbtrace, error_type=etype, is_transient=True)
-            # Envelope present but with no actionable code and is_transient not
-            # set: defer to the transport status so a 5xx (server-side) stays
-            # transient and a 429 stays rate-limit; only a clean 4xx with no
-            # recognized signal is a true permanent app/param error.
+            # Envelope with nothing actionable: fall back to the status so a 5xx
+            # stays transient and a 429 stays a throttle. Only a plain 4xx is
+            # permanent.
             if resp.status_code >= 500:
                 raise MetaTransientError(
                     err.get('message') or 'Graph %s server error' % resp.status_code,
@@ -253,11 +218,9 @@ class MetaGraphClient(models.AbstractModel):
                 fbtrace_id=fbtrace, error_type=etype,
                 error_user_title=euser_title, error_user_msg=euser_msg)
 
-        # Success: a dict with no error envelope on a 2xx response.
         if isinstance(body, dict) and resp.ok:
             return body
 
-        # No parseable error envelope — classify by transport status.
         if resp.status_code >= 500:
             raise MetaTransientError('Graph %s server error' % resp.status_code)
         if resp.status_code == 429:
@@ -267,8 +230,7 @@ class MetaGraphClient(models.AbstractModel):
                 app_usage=resp.headers.get('X-App-Usage'),
                 buc_usage=buc, retry_after_min=_buc_minutes(buc))
         if resp.ok:
-            # A 2xx with empty/invalid JSON where the caller expected data must
-            # not surface a raw ValueError.
+            # 2xx with an empty or non-JSON body.
             raise MetaPermanentError(
                 'Empty/invalid JSON in a 2xx Graph response')
         raise MetaPermanentError(
@@ -276,12 +238,10 @@ class MetaGraphClient(models.AbstractModel):
 
     @api.model
     def fetch_lead(self, page, leadgen_id):
-        """GET /{leadgen_id} — read one Meta lead. page is a meta.page recordset.
+        """GET /{leadgen_id}: read one lead using the meta.page's token.
 
-        Reads page.access_token + page.account_id.app_secret (appsecret_proof).
-        leadgen_id is a bare object id (no '://', no '?') so it passes the
-        _request path guard. Typed exceptions (MetaAuthError/MetaRateLimitError/
-        MetaTransientError/MetaPermanentError) propagate from _handle_response.
+        Signs the call with the account's App Secret. Typed Meta exceptions
+        propagate to the caller.
         """
         return self._request(
             page.access_token, leadgen_id,
@@ -294,18 +254,12 @@ class MetaGraphClient(models.AbstractModel):
     @api.model
     def resolve_name(self, token, object_type, graph_id, payload_name=None,
                      app_secret=None):
-        """Payload-first / cache-on-miss name resolution, to limit Graph calls.
+        """Return the name of a campaign/ad set/ad, calling Graph only on a miss.
 
-        1. ``payload_name`` present -> return it, zero HTTP and no cache write
-           (the common case — the LeadGen payload carries the *_name).
-        2. Persistent cache hit -> return it, no Graph call.
-        3. True miss -> exactly one Graph call for {'fields': 'name'}, write the
-           concurrency-safe cache (indefinite, no TTL), return the name.
-
-        ``app_secret`` is threaded into the cache-miss Graph call so the
-        appsecret_proof is sent for name lookups too — without it, an app that
-        has "Require App Secret Proof" enabled would reject attribution name
-        resolution for leads whose payload omits the *_name.
+        Uses ``payload_name`` if the lead already carried it, then the
+        meta.name.cache table, and only then one Graph call whose result is
+        cached. Pass ``app_secret`` so the lookup still works on apps with
+        "Require App Secret Proof" turned on.
         """
         if payload_name:
             return payload_name
@@ -313,13 +267,11 @@ class MetaGraphClient(models.AbstractModel):
         hit = Cache._lookup(object_type, graph_id)
         if hit:
             return hit
-        # graph_id is a bare path -> passes the _request path validation.
         data = self._request(token, graph_id, params={'fields': 'name'},
                              app_secret=app_secret)
         name = data.get('name')
-        # Only cache a real resolved name — storing a falsy name would create a
-        # row that _lookup reads back as a miss, re-fetching on every call and
-        # defeating the rate-limit defense.
+        # Don't cache an empty name: _lookup would read it as a miss and we'd
+        # hit Graph on every lead.
         if name:
             Cache._store(object_type, graph_id, name)
         return name
@@ -328,14 +280,9 @@ class MetaGraphClient(models.AbstractModel):
     def exchange_token(self, app_id, app_secret, short_lived_token):
         """Exchange a short-lived user token for a long-lived one.
 
-        GET /oauth/access_token?grant_type=fb_exchange_token&client_id=&
-        client_secret=&fb_exchange_token=  ->  {access_token, token_type,
-        expires_in}. This OAuth endpoint authenticates by client_id +
-        client_secret in the query — it must not receive an injected bearer
-        access_token, so we call _request with inject_token=False. The call
-        still routes through _request for the pinned version, timeouts, and
-        token-free re-raise. Returns (access_token, expires_in); expires_in may
-        be absent for a never-expiring result.
+        /oauth/access_token authenticates with client_id + client_secret, so no
+        access_token is injected. Returns (access_token, expires_in);
+        expires_in is None for a token that never expires.
         """
         data = self._request(
             short_lived_token,
@@ -352,13 +299,11 @@ class MetaGraphClient(models.AbstractModel):
 
     @api.model
     def debug_token(self, app_id, app_secret, input_token):
-        """Introspect input_token via GET /debug_token?input_token=&
-        access_token={app_id|app_secret}. Meta accepts an app access token to
-        inspect another token. Returns the 'data' object (is_valid, type,
-        expires_at, data_access_expires_at, scopes, granular_scopes, user_id,
-        error, ...). A transport-level 190 envelope is raised as MetaAuthError by
-        _handle_response; an HTTP-200 body with is_valid:false is returned as-is
-        for the caller's status mapper to classify as auth_failed.
+        """Inspect input_token via /debug_token using the app access token.
+
+        Returns the 'data' object (is_valid, type, expires_at, scopes, ...). A
+        190 envelope raises MetaAuthError; a 200 with is_valid false is returned
+        as-is for the caller to map to auth_failed.
         """
         app_token = '%s|%s' % (app_id, app_secret)
         body = self._request(app_token, 'debug_token',
@@ -367,17 +312,14 @@ class MetaGraphClient(models.AbstractModel):
 
     @api.model
     def _iter_paged(self, token, path, params=None, app_secret=None):
-        """Yield each item in data[] across all pages, following
-        paging.cursors.after with the bare path (never paging.next, which is a
-        full URL the _request guard rejects). Guards against silent truncation.
-        Re-issues through _request so timeouts/redaction/appsecret_proof all
-        still apply.
+        """Yield every item in data[] across all pages.
+
+        Follows paging.cursors.after on the bare path. paging.next is a full
+        URL, which _request would refuse.
         """
         call_params = dict(params or {})
-        # Guard against a non-terminating paging loop: Meta returning the same
-        # 'after' cursor again (or a buggy mock) would otherwise spin forever and
-        # pin a worker. Stop on a repeated cursor or a hard page cap, logging so
-        # the truncation is observable rather than silent.
+        # Stop on a repeated cursor or the page cap, and log it, so a looping
+        # cursor can't pin a worker forever.
         seen_after = set()
         pages = 0
         while True:
@@ -401,19 +343,13 @@ class MetaGraphClient(models.AbstractModel):
 
     @api.model
     def discover_pages(self, user_token, app_secret=None):
-        """GET /me/accounts -> [{id, name, access_token, category, tasks}, ...],
-        paginated. Each Page carries its own access_token."""
+        """GET /me/accounts: list the user's Pages, each with its own token."""
         return list(self._iter_paged(
             user_token, 'me/accounts',
             params={'fields': 'id,name,access_token,category,tasks'},
             app_secret=app_secret))
 
-    # ---- Subscription edge (Page leadgen webhook) -------------------------
-    # Three thin _request wrappers cloned from fetch_lead: bare path, page
-    # access_token, app_secret=page.account_id.app_secret. This is the only
-    # place a /{page_id}/subscribed_apps Graph URL is built -- the pinned
-    # const.GRAPH_VERSION, appsecret_proof and token redaction all apply inside
-    # _request. Do not f-string a Graph URL anywhere else.
+    # ---- Page leadgen webhook subscription --------------------------------
     @api.model
     def subscribe_page(self, page):
         """POST /{page_id}/subscribed_apps?subscribed_fields=leadgen."""
@@ -424,19 +360,18 @@ class MetaGraphClient(models.AbstractModel):
 
     @api.model
     def page_subscription_status(self, page):
-        """GET /{page_id}/subscribed_apps -> data[] (drives the status badge)."""
+        """GET /{page_id}/subscribed_apps; feeds the subscription status badge."""
         return self._request(
             page.access_token, '%s/subscribed_apps' % page.page_id,
             method='GET', app_secret=page.account_id.app_secret)
 
     @api.model
     def unsubscribe_page(self, page):
-        """DELETE /{page_id}/subscribed_apps (unsubscribe).
+        """DELETE /{page_id}/subscribed_apps.
 
-        The DELETE param granularity still needs live verification — a bare
-        DELETE may remove the whole app subscription, not just the leadgen
-        field. v1 does not pass subscribed_fields on DELETE; confirm the
-        granularity against live Meta.
+        No subscribed_fields is sent, so this may drop the whole app
+        subscription rather than just leadgen. Not yet confirmed against live
+        Meta.
         """
         return self._request(
             page.access_token, '%s/subscribed_apps' % page.page_id,
@@ -444,9 +379,7 @@ class MetaGraphClient(models.AbstractModel):
 
     @api.model
     def discover_forms(self, page_token, page_id, app_secret=None):
-        """GET /{page_id}/leadgen_forms -> [{id, name, status, locale}, ...],
-        paginated. Page-scoped read — pass the per-Page access_token, not the
-        user token."""
+        """GET /{page_id}/leadgen_forms. Needs the Page token, not the user token."""
         return list(self._iter_paged(
             page_token, '%s/leadgen_forms' % page_id,
             params={'fields': 'id,name,status,locale'},

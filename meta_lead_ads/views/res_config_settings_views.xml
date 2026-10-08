@@ -6,31 +6,15 @@
 -->
 <odoo>
     <!--
-        The dedicated "Meta Lead Ads" Settings section.
+        "Meta Lead Ads" section in Settings. The <app name> must match the
+        'module' context key of meta_config_settings_action, or the section
+        won't render.
 
-        A single inherit of base.res_config_settings_view_form injecting an
-        <app name="meta_lead_ads"> whose name must equal the {'module':
-        'meta_lead_ads'} context of meta_config_settings_action, otherwise the
-        section will not render.
+        groups= on the app and each block removes them from the view for
+        non-admins (the security tests check this). It only hides the UI:
+        set_values and the retro rename check the group again in Python.
 
-        Security: groups= is placed on the <app> and on every <block>. On Odoo 18
-        a groups=-gated field read raises AccessError, so the whole gated subtree
-        is stripped from the resolved arch for a non-admin user — the security
-        tests rely on this (lead_name_template + meta_lead_ads present for the
-        admin arch, absent otherwise). This view gate is the UI layer only; the
-        authoritative gate for the sudo mutators (set_values,
-        action_retro_rename_meta_leads) is the in-method has_group check in
-        res_config_settings.py — both are present by design.
-
-        logo= points at static/description/icon.png (the square CoreSys app icon)
-        so the section shows its icon in the Settings left sidebar, matching the
-        stock apps. (static/description/cover.jpg is the wide description-page
-        cover, not used here.) Omitting logo= leaves the sidebar entry icon-less;
-        the path is served from disk.
-
-        Odoo 18 syntax only: app/block/setting tags, no legacy settings-block div
-        wrapper, inline groups=/readonly=, no legacy attrs or states attributes,
-        list tag never the old tree tag.
+        Without logo= the sidebar entry has no icon.
     -->
     <record id="res_config_settings_view_form_meta" model="ir.ui.view">
         <field name="name">res.config.settings.view.form.meta.lead.ads</field>
@@ -88,7 +72,7 @@
                             </div>
                         </setting>
                         <setting string="Re-apply to existing leads"
-                                 help="Re-title existing Meta leads still using a generated title. Templates containing {date} are skipped (no trusted Meta create-date).">
+                                 help="Re-title existing Meta leads still using a generated title. With a {date} template, only leads that have a stored Meta submission date are re-titled.">
                             <button name="action_retro_rename_meta_leads" type="object"
                                     string="Re-apply to existing Meta leads" class="btn-secondary"/>
                         </setting>

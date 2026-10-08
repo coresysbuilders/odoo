@@ -6,38 +6,21 @@
 
 """Tests for the token-health cron on meta.account.
 
-``TestMetaTokenHealth`` exercises ``meta.account._cron_token_health`` /
-``_alert_token_dead``. The cron re-checks each active account via the existing
-``action_test_connection`` (patched on its CLASS to simulate a token going dead)
-and, whenever the post-check token is invalid AND no open token-health activity
-exists, raises a single de-duplicated alert: a To-Do ``mail.activity`` plus a
-token-free ``mail.mail`` to the ``group_meta_admin`` users.
-
-The cases cover:
-  * the empty-admin fallback (schedule the activity to env.uid, never create a
-    mail.mail with an empty email_to);
-  * pre-existing-invalid alerting (an account that is already dead with no
-    valid->invalid transition still alerts exactly once, then dedups on the
-    next run via the open activity).
-
-Odoo 18 conventions used throughout:
-  1. Patch ``action_test_connection`` on ``type(...)`` (the CLASS), never a
-     recordset.
-  2. Use ``search_count(...)`` -- the legacy count kwarg is removed.
-  3. ``assertRaises`` takes a SINGLE exception class, never a tuple.
+The cron re-runs ``action_test_connection`` (patched on the class here) for
+each active account. When a token is invalid and there is no open alert
+activity yet, it schedules one To-Do and emails the Meta admins. The email
+must not contain any token or secret.
 """
 from unittest import mock
 
 from odoo.tests.common import TransactionCase, tagged
 
 TODO_XMLID = 'mail.mail_activity_data_todo'
-ALERT_SUMMARY = 'Meta token invalid/expired'   # mirrors _alert_token_dead
+ALERT_SUMMARY = 'Meta token invalid/expired'   # same as in _alert_token_dead
 
 
 class TokenHealthFixtureMixin:
-    """A meta.account starting token_valid=True + an admin user (in
-    group_meta_admin) carrying an email, so the email-recipient assertion has a
-    target. The account CLASS is captured for class-patching."""
+    """A healthy meta.account and a Meta admin with an email address."""
 
     def setUp(self):
         super().setUp()
@@ -47,7 +30,6 @@ class TokenHealthFixtureMixin:
         self.AccountClass = type(self.Account)
         self.admin_group = self.env.ref('meta_lead_ads.group_meta_admin')
         base_internal = self.env.ref('base.group_user')
-        # An admin WITH an email -> a real mail.mail recipient.
         self.admin_user = self.env['res.users'].create({
             'name': 'Meta Admin', 'login': 'meta_admin_th',
             'email': 'admin_th@example.com',
@@ -63,40 +45,32 @@ class TokenHealthFixtureMixin:
             ('res_model', '=', 'meta.account'), ('res_id', '=', account.id)])
 
     def _mail_for(self, account):
-        # Match the _alert_token_dead alert email by its distinctive subject
-        # ("...access token invalid for <name>"). A bare `subject ilike name`
-        # also catches Odoo 19's activity-assignment notification mail (whose
-        # subject is just the record name and whose email_to is False), which
-        # is not the alert under test.
+        # Match on the alert subject, not just the account name: Odoo 19 also
+        # sends an activity-assignment mail whose subject is the record name.
         return self.Mail.search([
             ('subject', 'ilike', 'access token invalid for %s' % account.name)])
 
 
 @tagged('post_install', '-at_install')
 class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
-    """The token-health cron alert + open-activity dedup + the empty-admin
-    fallback + pre-existing-invalid alerting."""
+    """Alerting, alert dedup and per-account isolation in the token cron."""
 
     def _flip_dead(self):
-        """A class-patch side effect: action_test_connection finds the token dead
-        and flips token_valid -> False (the valid->invalid transition)."""
+        """Side effect for a token that goes from valid to invalid."""
         def _side(self_account):
             self_account.write({'token_valid': False})
             return True
         return _side
 
     def _stay_dead(self):
-        """A class-patch side effect: the token is ALREADY dead and stays dead
-        (no transition occurs on this run -- pre-existing-invalid case)."""
+        """Side effect for a token that was already invalid before the run."""
         def _side(self_account):
             self_account.write({'token_valid': False})
             return True
         return _side
 
     def test_alert_on_invalid(self):
-        """When action_test_connection flips token_valid True->False and no open
-        activity exists, _cron_token_health schedules a To-Do mail.activity on
-        the failing account."""
+        """A token that goes invalid gets a To-Do activity on its account."""
         with mock.patch.object(self.AccountClass, 'action_test_connection',
                                autospec=True, side_effect=self._flip_dead()):
             self.Account._cron_token_health()
@@ -105,9 +79,7 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
             ('res_id', '=', self.account.id)]), 1)
 
     def test_email_admins(self):
-        """The dead-token run creates a mail.mail whose email_to includes the
-        group_meta_admin user's email; the subject/body reference the account
-        NAME only and contain NO token/secret string."""
+        """Admins get an email naming the account, with no token or secret."""
         with mock.patch.object(self.AccountClass, 'action_test_connection',
                                autospec=True, side_effect=self._flip_dead()):
             self.Account._cron_token_health()
@@ -122,16 +94,12 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
         self.assertIn(self.account.name, blob)
 
     def test_no_realert(self):
-        """Open-activity dedup: a SECOND _cron_token_health run while the token
-        stays invalid AND an open To-Do already exists creates NO additional
-        activity and NO additional email -- this guards the broadened
-        not-token_valid condition from storming."""
+        """A second run with the alert still open sends nothing new."""
         with mock.patch.object(self.AccountClass, 'action_test_connection',
                                autospec=True, side_effect=self._flip_dead()):
             self.Account._cron_token_health()
             acts_after_first = self._activity_count(self.account)
             mails_after_first = len(self._mail_for(self.account))
-            # Second run -- token still invalid, open activity present.
             self.Account._cron_token_health()
             acts_after_second = self._activity_count(self.account)
             mails_after_second = len(self._mail_for(self.account))
@@ -140,10 +108,11 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
         self.assertEqual(mails_after_second, mails_after_first)
 
     def test_190_and_isvalid_false(self):
-        """Both a code-190 OAuthException path AND an HTTP-200 is_valid:false
-        body resolve to token_valid=False and each triggers exactly one alert.
-        Modeled as two distinct accounts so the alert counts stay isolated
-        (no shared-state pollution)."""
+        """An OAuth 190 error and an is_valid:false reply each alert once.
+
+        Both end up as token_valid=False, so the patch just writes that. Two
+        accounts keep the alert counts separate.
+        """
         acc_190 = self.Account.create({
             'name': 'Acct190', 'account_id': 'ACC190',
             'app_id': 'a', 'app_secret': 's', 'access_token': 't',
@@ -154,12 +123,10 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
             'token_valid': True})
 
         def _both_paths(self_account):
-            # Both the 190 OAuthException classification and the HTTP-200
-            # is_valid:false body land on the SAME persisted outcome.
             self_account.write({'token_valid': False})
             return True
 
-        # Drop the always-valid seed account from scope so it does not alert.
+        # Archive the fixture account so only the two above are checked.
         self.account.active = False
         with mock.patch.object(self.AccountClass, 'action_test_connection',
                                autospec=True, side_effect=_both_paths):
@@ -168,13 +135,12 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
         self.assertEqual(self._activity_count(acc_isvalid), 1)
 
     def test_no_admin_fallback(self):
-        """Empty-admin case: with NO users in group_meta_admin, a dead-token run
-        must STILL schedule the To-Do activity (assigned to the env.uid
-        fallback) but must NOT create a mail.mail with an empty email_to.
-        Asserts activity == 1 AND mail == 0 for this account (empty-recipient
-        guard)."""
-        # Empty the admin group: remove every member (incl. our seeded admin).
-        # Odoo 19: res.groups.users -> user_ids (mirrors _alert_token_dead).
+        """With no Meta admins, the activity is still created but no email is.
+
+        The activity falls back to the current user; an email with an empty
+        recipient list would just fail to send.
+        """
+        # Odoo 19 renamed res.groups.users to user_ids.
         self.admin_group.user_ids.write(
             {'group_ids': [(3, self.admin_group.id)]})
         self.assertFalse(self.admin_group.user_ids)
@@ -185,46 +151,33 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
         self.assertEqual(len(self._mail_for(self.account)), 0)
 
     def test_pre_existing_invalid_alerts(self):
-        """Pre-existing-invalid case: an account that STARTS token_valid=False
-        with NO prior open activity (already dead, no valid->invalid transition
-        on this run) must STILL produce EXACTLY ONE alert (activity == 1 AND one
-        mail.mail) -- the broadened guard (not token_valid AND no open activity)
-        covers it. A SECOND run produces no new alert (the open activity dedups
-        it -- reconciles with test_no_realert)."""
+        """An account that was already invalid alerts once, then stays quiet.
+
+        No valid-to-invalid change happens here, so the alert has to be driven
+        by the current state plus the open-activity check.
+        """
         dead = self.Account.create({
             'name': 'AlreadyDead', 'account_id': 'ACC_DEAD',
             'app_id': 'a', 'app_secret': 's', 'access_token': 't',
             'token_valid': False})
-        # The always-valid seed account must not alert; scope it out.
         self.account.active = False
         with mock.patch.object(self.AccountClass, 'action_test_connection',
                                autospec=True, side_effect=self._stay_dead()):
             self.Account._cron_token_health()
             self.assertEqual(self._activity_count(dead), 1)
             self.assertEqual(len(self._mail_for(dead)), 1)
-            # Second run dedups via the open activity from the first run.
+            # The open activity from the first run blocks a repeat.
             self.Account._cron_token_health()
             self.assertEqual(self._activity_count(dead), 1)
             self.assertEqual(len(self._mail_for(dead)), 1)
 
-    # ------------------------------------------------------------------ #
-    # Per-account savepoint isolation: each account's check is wrapped in
-    # its OWN savepoint so a genuinely-unexpected (non-UserError) failure on
-    # one account does NOT abort the sweep for the remaining accounts.
-    # ------------------------------------------------------------------ #
     def test_account_isolation(self):
-        """TWO active accounts. Account #1's action_test_connection raises a
-        genuinely-unexpected (NON-UserError) Exception; account #2 is
-        invalid-but-handled (token flips False). The sweep must continue PAST
-        account #1's failure (per-account savepoint) so account #2 is still
-        health-checked and _alert_token_dead reaches it -- an open token-health
-        To-Do activity exists on account #2 keyed on _TOKEN_DEAD_SUMMARY.
+        """A crash on one account doesn't stop the sweep for the next one.
 
-        The assertion observes ACCOUNT state, not log text; the failure log must
-        be token-free (account.id only).
-
-        The always-valid seed account is scoped out so it does not alert."""
-        self.account.active = False   # drop the always-valid seed from scope
+        Each account is checked in its own savepoint, so an unexpected
+        exception on the first still lets the second get its alert.
+        """
+        self.account.active = False
         acc_boom = self.Account.create({
             'name': 'Boom', 'account_id': 'ACC_BOOM',
             'app_id': 'a', 'app_secret': 's', 'access_token': 't',
@@ -236,15 +189,12 @@ class TestMetaTokenHealth(TokenHealthFixtureMixin, TransactionCase):
 
         def _side(self_account):
             if self_account.id == acc_boom.id:
-                # Genuinely-unexpected, NOT a UserError -- must be isolated by
-                # the per-account savepoint so the sweep continues to acc_ok.
+                # A plain Exception, not a UserError.
                 raise Exception('unexpected boom (no token logged)')
-            # acc_ok: token found invalid-but-handled.
             self_account.write({'token_valid': False})
             return True
 
         with mock.patch.object(self.AccountClass, 'action_test_connection',
                                autospec=True, side_effect=_side):
             self.Account._cron_token_health()
-        # The sweep continued past acc_boom and alerted acc_ok exactly once.
         self.assertEqual(self._activity_count(acc_ok), 1)

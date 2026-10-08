@@ -5,14 +5,10 @@
     redistribution, or resale, in whole or in part, via any medium, is prohibited.
 -->
 <odoo>
-  <!-- noupdate="1": the interval is admin-tunable. An admin who widens or
-       narrows the drain cadence keeps that edit across a module upgrade — Odoo
-       only writes this record on first install, never on -u. -->
+  <!-- noupdate so an admin's interval change survives a module upgrade. -->
   <data noupdate="1">
-    <!-- Deferred drain. The webhook controller ACKs fast and only inserts pending
-         meta.webhook.event rows; this cron is what actually moves pending -> done
-         by calling _cron_drain(), a thin wrapper over the ingest_leadgen service.
-         The cron creates no crm.lead itself. -->
+    <!-- The webhook only stores events and answers Meta quickly. This cron
+         processes the pending events through ingest_leadgen. -->
     <record id="cron_meta_webhook_drain" model="ir.cron">
       <field name="name">Meta: Drain Webhook Event Queue</field>
       <field name="model_id" ref="model_meta_webhook_event"/>

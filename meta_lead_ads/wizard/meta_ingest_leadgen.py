@@ -4,11 +4,8 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-# Admin manual-trigger wizard following the meta_onboarding TransientModel
-# idiom. This wizard is a thin wrapper -- it never creates a crm.lead itself;
-# the one ingestion code path is meta.lead.ingest.ingest_leadgen. Admin-only:
-# the ACL row is group_meta_admin only (no group_meta_user row) and the
-# menuitem is admin-gated.
+# Admin wizard to pull a single lead by its Meta ID. It hands off to
+# ingest_leadgen like the webhook and cron do; access is admin-only.
 from odoo import fields, models, _
 from odoo.exceptions import UserError
 
@@ -21,10 +18,7 @@ class MetaIngestLeadgen(models.TransientModel):
     leadgen_id = fields.Char(string='Meta Lead ID', required=True)
 
     def action_ingest(self):
-        """Thin wrapper over the single ingestion code path. Routes through
-        ingest_leadgen(..., trigger='manual') -> the service does the fetch +
-        dedup + create/link; we only return an act_window pointing at the
-        resulting crm.lead. No URL is built and no lead is created here."""
+        """Ingest the lead through ingest_leadgen and open the resulting crm.lead."""
         self.ensure_one()
         leadgen_id = (self.leadgen_id or '').strip()
         if not leadgen_id:

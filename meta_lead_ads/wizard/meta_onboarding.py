@@ -4,11 +4,9 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-# Guided wizard that lets an admin connect Odoo to Meta. It reuses the Graph
-# client methods and meta.account._map_token_status -- no Graph URL is built
-# here and no data{}->fields mapping is duplicated (the mapper authority stays
-# on meta.account). The page/form selection lines are transient children; each
-# page line carries its own per-Page access_token, admin-grouped.
+# Step-by-step wizard for connecting Odoo to Meta: validate the token, pick
+# Pages, review forms, then save. All Graph calls go through meta.graph.client
+# and token status mapping lives on meta.account.
 import secrets
 
 from odoo import api, fields, models, _
@@ -28,8 +26,6 @@ class MetaOnboardingPage(models.TransientModel):
     selected = fields.Boolean(default=True)
     page_id = fields.Char(readonly=True)
     name = fields.Char(readonly=True)
-    # The per-Page access token is secret -> admin-grouped. page_id/name are
-    # not secret -> ungrouped.
     access_token = fields.Char(groups='meta_lead_ads.group_meta_admin')
 
 
@@ -37,12 +33,12 @@ class MetaOnboardingForm(models.TransientModel):
     _name = 'meta.onboarding.form'
     _description = 'Meta Onboarding Form Line'
 
-    # Caches the reviewed forms so commit consumes exactly the reviewed set
-    # (no second discovery in commit).
+    # The forms the admin reviewed. Commit saves exactly these rather than
+    # asking Meta again.
     wizard_id = fields.Many2one('meta.onboarding', required=True,
                                 ondelete='cascade')
     page_line_id = fields.Many2one('meta.onboarding.page', ondelete='cascade')
-    page_id = fields.Char(readonly=True)        # the Meta page id this form belongs to
+    page_id = fields.Char(readonly=True)        # Meta page id
     form_id = fields.Char(readonly=True)
     name = fields.Char(readonly=True)
 
@@ -55,9 +51,7 @@ class MetaOnboarding(models.TransientModel):
         [('credentials', 'Credentials'), ('pages', 'Select Pages'),
          ('forms', 'Review Forms'), ('done', 'Done')],
         default='credentials')
-    # App ID is public app metadata -> not secret, ungrouped. App Secret and the
-    # pasted token are secret -> admin-grouped. The token field is named
-    # access_token to mirror meta.account.access_token.
+    # App ID is public; the App Secret and token are admin-only.
     app_id = fields.Char()
     app_secret = fields.Char(groups='meta_lead_ads.group_meta_admin')
     access_token = fields.Char(string='Token',
@@ -67,10 +61,10 @@ class MetaOnboarding(models.TransientModel):
     page_line_ids = fields.One2many('meta.onboarding.page', 'wizard_id')
     form_line_ids = fields.One2many('meta.onboarding.form', 'wizard_id')
     account_id = fields.Many2one('meta.account')
-    token_owner_id = fields.Char(readonly=True)   # the identity the account keys on
-    # Status mirror fields (filled from _map_token_status for display). The
-    # label is lead_retrieval_granted, not production_ready -- same selection as
-    # meta.account.
+    token_owner_id = fields.Char(readonly=True)   # meta.account is keyed on this
+    # Display copies of the token status; same selection as meta.account.
+    # Granted permission is not the same as production-ready: App Review
+    # still applies.
     token_valid = fields.Boolean(readonly=True)
     access_status = fields.Selection(
         [('auth_failed', 'Authentication failed'),
@@ -83,22 +77,16 @@ class MetaOnboarding(models.TransientModel):
     # ------------------------------------------------------------------
     # Per-page webhook subscription + verify_token/URL surface
     # ------------------------------------------------------------------
-    # The page the Subscribe/Unsubscribe/status actions target. The whole
-    # wizard action/menu/view is group_meta_admin-restricted (ACL + admin-only
-    # menu), so the verify_token surfaced below is shown only to an admin.
-    # meta.page itself is admin/user readable but the secret surface here
-    # inherits the wizard's admin-only access.
+    # Target of the subscribe/unsubscribe buttons. The wizard is admin-only,
+    # which is what keeps the verify token below away from regular users.
     page_id = fields.Many2one('meta.page', string='Page')
-    # Declared so the view's widget="badge" resolves to a real field; populated
-    # by _refresh_subscription_status. Never let the view reference an
-    # undeclared field.
+    # Filled by _refresh_subscription_status.
     subscription_state = fields.Selection(
         [('subscribed', 'Subscribed'), ('not_subscribed', 'Not Subscribed')],
         readonly=True)
-    # Read-only display surface for paste-into-Meta. webhook_verify_token is a
-    # shared secret shown read-only only to the admin (the wizard is
-    # admin-only) -- not a password input and not exposed to any non-admin via
-    # field/related/compute/sudo.
+    # Shown after commit so the admin can paste them into Meta's webhook
+    # settings. The verify token is a shared secret; don't expose it to
+    # non-admins through a related or computed field elsewhere.
     webhook_url = fields.Char(readonly=True)
     webhook_verify_token = fields.Char(string='Verify Token', readonly=True)
 
@@ -106,9 +94,7 @@ class MetaOnboarding(models.TransientModel):
     # helpers
     # ------------------------------------------------------------------
     def _ensure_verify_token(self):
-        """Get-or-create the verify_token ir.config_parameter. Generated once
-        with secrets.token_urlsafe(32); a second call returns the same value
-        (idempotent)."""
+        """Return the webhook verify token, generating it on first use."""
         ICP = self.env['ir.config_parameter'].sudo()
         key = 'meta_lead_ads.webhook_verify_token'
         tok = ICP.get_param(key)
@@ -118,17 +104,17 @@ class MetaOnboarding(models.TransientModel):
         return tok
 
     def _webhook_url(self):
-        """The public webhook endpoint = web.base.url + the route. No Graph URL
-        is built here."""
+        """Return the public webhook URL built from web.base.url."""
         base = self.env['ir.config_parameter'].sudo().get_param(
             'web.base.url') or ''
         return '%s%s' % (base, '/meta_lead_ads/webhook')
 
     def _refresh_subscription_status(self):
-        """Map a live page_subscription_status data[] response to the declared
-        subscription_state field. 'subscribed' iff some subscribed_apps entry
-        lists the leadgen field, else 'not_subscribed'. Token-free and directly
-        callable so it can be asserted without an HTTP round-trip."""
+        """Ask Meta whether the page is subscribed and update subscription_state.
+
+        The page counts as subscribed when any subscribed app lists the
+        leadgen field.
+        """
         self.ensure_one()
         if not self.page_id:
             self.subscription_state = 'not_subscribed'
@@ -141,12 +127,11 @@ class MetaOnboarding(models.TransientModel):
         self.subscription_state = 'subscribed' if subscribed else 'not_subscribed'
     @api.model
     def _map_token_status(self, data):
-        """Delegate to meta.account's mapper -- do not duplicate the
-        data{}->status logic (single mapper authority)."""
+        """Map a debug_token response to status values (see meta.account)."""
         return self.env['meta.account']._map_token_status(data)
 
     def _reload(self):
-        """Re-render the same wizard record in-place (stepped idiom)."""
+        """Reopen this wizard record so the next step is shown."""
         self.ensure_one()
         return {'type': 'ir.actions.act_window', 'res_model': self._name,
                 'res_id': self.id, 'view_mode': 'form', 'target': 'new'}
@@ -156,16 +141,16 @@ class MetaOnboarding(models.TransientModel):
     # ------------------------------------------------------------------
     @api.model
     def _get_or_create_account(self, data):
-        """get-or-create the meta.account keyed on the token owner id, never the
-        app id. Two owners under one app -> two accounts. app_id is stored in
-        its own field; status comes from the shared mapper. Existing accounts
-        keep their manual edits -- only the Meta-authoritative fields
-        (name/owner/app_id/status) are refreshed."""
+        """Find or create the meta.account for the token's owner.
+
+        Accounts are keyed on the token owner, not the app, so two owners on
+        one app give two accounts. On an existing account only the fields Meta
+        owns (name, owner, app_id, status) are refreshed.
+        """
         status = self._map_token_status(data)
         owner = status.get('token_owner_id')
-        # account_id is required + unique; an absent owner would either collide
-        # ownerless connections onto one empty-key record or raise a bare
-        # IntegrityError. Fail fast and token-free before any search/create.
+        # account_id is required and unique, so without an owner we would
+        # either merge unrelated connections or hit an IntegrityError.
         if not owner:
             raise UserError(_("Meta did not return a token owner id for this "
                               "token, so no account can be created. Use a "
@@ -177,7 +162,7 @@ class MetaOnboarding(models.TransientModel):
             'name': (data or {}).get('application') or owner,
             'account_id': owner,
             'token_owner_id': owner,
-            'app_id': app_id,            # separate field -- never overload account_id
+            'app_id': app_id,
         }
         vals.update(status)
         if account:
@@ -188,23 +173,20 @@ class MetaOnboarding(models.TransientModel):
 
     @api.model
     def _get_or_create_page(self, account, pid, name, access_token):
-        """get-or-create a meta.page scoped to the owning account.
+        """Find or create the meta.page under this account.
 
-        meta.page.page_id is globally unique. Searching by page_id alone and
-        writing account_id would silently re-parent a page (and its
-        cascade-owned forms) from another account onto this one. So scope the
-        search to this account; if the same page_id already belongs to a
-        different account, refuse explicitly with a token-free error instead of
-        a silent re-parent or an opaque unique-constraint crash."""
+        page_id is globally unique. If another account already owns the page
+        we refuse, rather than silently moving it (and its forms) across or
+        failing on the unique constraint.
+        """
         Page = self.env['meta.page']
         pvals = {'name': name, 'page_id': pid, 'account_id': account.id,
                  'access_token': access_token, 'active': True}
         page = Page.search([('page_id', '=', pid),
                             ('account_id', '=', account.id)], limit=1)
         if page:
-            page.write(pvals)        # Meta-authoritative only; manual edits kept
+            page.write(pvals)        # only Meta-owned fields; manual edits kept
             return page
-        # Not under this account -- is it owned by another account?
         other = Page.with_context(active_test=False).search(
             [('page_id', '=', pid), ('account_id', '!=', account.id)], limit=1)
         if other:
@@ -216,36 +198,33 @@ class MetaOnboarding(models.TransientModel):
 
     @api.model
     def _reconcile_pages(self, account, discovered, selected_ids=None):
-        """Additive reconcile.
+        """Sync pages with what Meta returned.
 
-        - get-or-create every selected page that the fresh discovery returned;
-        - a page absent from the fresh discovery -> active=False (never unlink);
-        - an unselected-but-still-present page stays active=True.
+        Selected pages are created or updated. Pages Meta no longer returns are
+        archived, never deleted. Pages that still exist but weren't selected
+        this time are left as they are.
         """
         Page = self.env['meta.page']
         if selected_ids is None:
             selected_ids = {p.get('id') for p in discovered}
         discovered_ids = [p.get('id') for p in discovered]
-        # get-or-create the selected, still-present pages.
         for p in discovered:
             pid = p.get('id')
             if pid not in selected_ids:
                 continue
             self._get_or_create_page(account, pid, p.get('name'),
                                      p.get('access_token'))
-        # Deactivate only pages that disappeared from Meta (absent from the
-        # fresh discovery) -- not pages merely left unselected this session.
         Page.search([('account_id', '=', account.id),
                      ('page_id', 'not in', discovered_ids)]).write(
             {'active': False})
 
     @api.model
     def _reconcile_forms(self, page, discovered_forms):
-        """Auto-import all forms under a page, additive.
+        """Create or update the page's forms; archive the ones not listed.
 
-        get-or-create on the unique form_id; new forms default sync_enabled=True
-        (the field default -- not overridden here). Forms absent from the fresh
-        discovery -> active=False; never unlink."""
+        New forms get sync_enabled from the field default. An existing form
+        keeps whatever sync_enabled the admin set.
+        """
         Form = self.env['meta.lead.form']
         discovered_ids = [f.get('id') for f in discovered_forms]
         for f in discovered_forms:
@@ -254,9 +233,9 @@ class MetaOnboarding(models.TransientModel):
             fvals = {'name': f.get('name'), 'form_id': fid,
                      'page_id': page.id, 'active': True}
             if form:
-                form.write(fvals)        # sync_enabled (manual edit) preserved
+                form.write(fvals)
             else:
-                Form.create(fvals)       # sync_enabled defaults True
+                Form.create(fvals)
         Form.search([('page_id', '=', page.id),
                      ('form_id', 'not in', discovered_ids)]).write(
             {'active': False})
@@ -265,12 +244,11 @@ class MetaOnboarding(models.TransientModel):
     # stepped actions
     # ------------------------------------------------------------------
     def action_validate(self):
-        """Step credentials -> pages. Local empty-credential validation first,
-        then optional token exchange / introspect, then page discovery. All
-        errors are token-free."""
+        """Check the credentials with Meta and list the Pages the token can see.
+
+        Error messages never include the token or secret.
+        """
         self.ensure_one()
-        # Validate non-empty credentials locally, token-free, before
-        # constructing the client or any Graph call.
         if not (self.app_id and self.app_id.strip()):
             raise UserError(_("App ID is required."))
         if not (self.app_secret and self.app_secret.strip()):
@@ -293,17 +271,16 @@ class MetaOnboarding(models.TransientModel):
                               "Check the App ID / App Secret and try again."))
         status = self._map_token_status(data)
         if not status.get('token_valid'):
-            # HTTP-200 is_valid:false body -- surface, stay on step.
+            # Meta answers 200 with is_valid=false for a bad token.
             raise UserError(_("Meta reports this token is not valid. Paste a "
                               "current System User token and try again."))
         self.write({
-            'access_token': token,           # store the durable token
+            'access_token': token,           # long-lived if it was exchanged
             'token_owner_id': status.get('token_owner_id'),
             'token_valid': status.get('token_valid'),
             'access_status': status.get('access_status'),
             'leads_retrieval_granted': status.get('leads_retrieval_granted'),
         })
-        # Discover pages, build selection lines (each carries its token).
         pages = client.discover_pages(token, app_secret=self.app_secret)
         self.page_line_ids.unlink()
         self.env['meta.onboarding.page'].create([{
@@ -315,8 +292,7 @@ class MetaOnboarding(models.TransientModel):
         return self._reload()
 
     def action_discover_forms(self):
-        """Step pages -> forms. Discover forms once for the selected pages and
-        cache them as review lines; commit reuses these."""
+        """List the forms of the selected Pages for the admin to review."""
         self.ensure_one()
         client = self.env['meta.graph.client']
         selected = self.page_line_ids.filtered('selected')
@@ -338,22 +314,17 @@ class MetaOnboarding(models.TransientModel):
         return self._reload()
 
     def action_commit(self):
-        """Step forms -> done. Account keyed on the token owner; get-or-create
-        pages; commit exactly the cached reviewed form set (the reviewed forms
-        are authoritative, no second discovery); reconcile pages against a fresh
-        full discovery scoped to the selected pages. Never unlink, never build a
-        Graph URL, never log the token."""
+        """Save the account, the selected Pages and the reviewed forms.
+
+        Forms are saved exactly as reviewed. Pages are re-listed from Meta so
+        any that disappeared get archived. Nothing is deleted.
+        """
         self.ensure_one()
         client = self.env['meta.graph.client']
-        # Route all live Graph calls through one try/except so a transient
-        # mid-commit failure surfaces as a token-free UserError (consistent with
-        # action_validate), never a raw typed exception. The token/secret are
-        # never included in the message.
+        # Turn Graph failures into a plain UserError with no token in it.
         try:
-            # Account identity = token owner, refreshed from a fresh introspect.
             data = client.debug_token(self.app_id, self.app_secret,
                                       self.access_token)
-            # Fresh full discovery -- the authority for page reconcile.
             fresh_pages = client.discover_pages(self.access_token,
                                                 app_secret=self.app_secret)
         except MetaAuthError:
@@ -363,19 +334,14 @@ class MetaOnboarding(models.TransientModel):
         except (MetaPermanentError, MetaRateLimitError, MetaTransientError):
             raise UserError(_("Could not reach Meta to finish onboarding. "
                               "Try Finish again in a moment."))
-        # Carry the app_id so _get_or_create_account stores it in its own field
-        # even if the debug_token body omits it.
+        # debug_token doesn't always return app_id.
         data = dict(data or {})
         data.setdefault('app_id', self.app_id)
         account = self._get_or_create_account(data)
-        # Persist the credentials/token on the account (Meta-authoritative).
         account.write({'app_secret': self.app_secret,
                        'access_token': self.access_token})
-        # --- pages: get-or-create the selected lines; commit their cached forms ---
-        # The reviewed (cached) form lines are the authoritative committed set --
-        # we do not re-discover forms here. That keeps the committed forms
-        # exactly what the admin reviewed and never imports forms for pages the
-        # admin did not select.
+        # Use the reviewed form lines, not a new discovery, so we save exactly
+        # what the admin saw.
         selected = self.page_line_ids.filtered('selected')
         for pl in selected:
             page = self._get_or_create_page(account, pl.page_id, pl.name,
@@ -385,17 +351,12 @@ class MetaOnboarding(models.TransientModel):
             cached = [{'id': fl.form_id, 'name': fl.name}
                       for fl in page_form_lines]
             self._reconcile_forms(page, cached)
-        # --- reconcile pages only: deactivate what a fresh full discovery
-        # drops, scoped to the selected pages; unselected-but-still-present
-        # pages stay active and are not re-imported. No second form reconcile --
-        # the cached set above is the final committed form set. ---
         selected_ids = {pl.page_id for pl in selected}
         self._reconcile_pages(account, fresh_pages, selected_ids=selected_ids)
         self.account_id = account.id
         self.state = 'done'
-        # Surface the verify_token + webhook URL (read-only, admin-only) for
-        # pasting into Meta App -> Webhooks -> Page -> leadgen, and prime the
-        # subscription badge for the connected page(s).
+        # Show the verify token and URL to paste into the Meta app's webhook
+        # settings (Page, leadgen field), and load the subscription status.
         self.webhook_verify_token = self._ensure_verify_token()
         self.webhook_url = self._webhook_url()
         if not self.page_id:
@@ -408,9 +369,7 @@ class MetaOnboarding(models.TransientModel):
         return self._reload()
 
     # ------------------------------------------------------------------
-    # Subscription actions -- thin, token-free wrappers over the single Graph
-    # client (no Graph URL built here). Errors are token-free UserError,
-    # following the action_commit idiom.
+    # Webhook subscription
     # ------------------------------------------------------------------
     def action_subscribe_page(self):
         """Subscribe the selected page to the leadgen webhook."""
@@ -430,8 +389,11 @@ class MetaOnboarding(models.TransientModel):
         return self._reload()
 
     def action_unsubscribe_page(self):
-        """Unsubscribe the selected page from the leadgen webhook. v1 sends a
-        bare DELETE (field-level granularity is a deferred live-verify item)."""
+        """Unsubscribe the selected page from the leadgen webhook.
+
+        This removes the app's whole subscription for the page, not just the
+        leadgen field.
+        """
         self.ensure_one()
         if not self.page_id:
             raise UserError(_("Select a Page before unsubscribing."))

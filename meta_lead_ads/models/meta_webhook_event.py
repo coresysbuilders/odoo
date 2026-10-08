@@ -4,13 +4,10 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-# The durable webhook queue. The public controller verifies the HMAC over the
-# raw bytes, then hands the parsed payload to _ingest_payload, which inserts one
-# pending row per leadgen change and returns fast. An ir.cron drains pending
-# rows out-of-band via _cron_drain -> _process_one, a thin wrapper over the
-# ingest service ingest_leadgen (the sole crm.lead create path). This model
-# creates zero crm.lead itself. The leadgen payload shape uses entry[].id as
-# the page id.
+# Webhook queue. The controller checks the HMAC on the raw bytes, then
+# _ingest_payload stores one pending row per leadgen change so the request can
+# return quickly. A cron drains the rows through ingest_leadgen, which is where
+# the crm.lead actually gets created.
 import json
 import logging
 
@@ -22,35 +19,31 @@ from .exceptions import (
     MetaTransientError, MetaPermanentError, MetaAuthError, MetaRateLimitError)
 
 _logger = logging.getLogger(__name__)
-MAX_ATTEMPTS = 5          # transient-retry give-up cap
+MAX_ATTEMPTS = 5          # give up on transient errors after this many tries
 
 
 class MetaWebhookEvent(models.Model):
     _name = 'meta.webhook.event'
     _description = 'Meta Webhook Event Queue'
-    _order = 'create_date asc'                 # FIFO drain
+    _order = 'create_date asc'                 # oldest first
 
     leadgen_id = fields.Char(required=True, index=True)
     page_id = fields.Char(index=True)          # Meta page id (entry[].id)
     form_id = fields.Char()
     ad_id = fields.Char()
-    # PII -> admin-grouped, identical idiom to meta.sync.log.raw_payload: the
-    # key is stripped from a non-admin ORM read and the view; a non-admin
-    # explicit read raises AccessError.
+    # Contains PII, so admin-only, same as meta.sync.log.raw_payload.
     raw_payload = fields.Text(groups='meta_lead_ads.group_meta_admin')
     status = fields.Selection(
         [('pending', 'Pending'), ('done', 'Done'), ('failed', 'Failed')],
         default='pending', required=True, index=True)
     attempts = fields.Integer(default=0)
-    error_message = fields.Text()              # token-free
+    error_message = fields.Text()              # never include a token
     lead_id = fields.Many2one('crm.lead', ondelete='set null')
 
-    # Belt-and-braces: at most one queue row per leadgen_id. Meta treats
-    # leadgen_id as a globally unique lead id, and crm.lead.meta_leadgen_id
-    # already carries a global DB-UNIQUE (the ultimate idempotency guard) --
-    # so a global queue UNIQUE (not keyed per page) is correct and consistent.
-    # Do not re-key dedup to (page_id, leadgen_id). Odoo 19: declared as a
-    # models.Constraint (the _sql_constraints list is no longer honoured).
+    # One queue row per leadgen_id. Meta lead ids are globally unique, so this
+    # is not keyed per page. The UNIQUE on crm.lead.meta_leadgen_id is still
+    # what prevents duplicate leads. Odoo 19 uses models.Constraint instead of
+    # _sql_constraints.
     _leadgen_id_uniq = models.Constraint(
         'unique(leadgen_id)',
         'A webhook event for this lead is already queued.',
@@ -58,64 +51,52 @@ class MetaWebhookEvent(models.Model):
 
     @api.model
     def _ingest_payload(self, data, raw=None):
-        """Extract leadgen changes from a verified payload and insert pending
-        rows (dedup on leadgen_id). Never creates a crm.lead.
+        """Queue a pending row for each leadgen change in a verified payload,
+        skipping lead ids already queued. Does not create leads.
         """
         if (data or {}).get('object') != 'page':
             return
         for entry in data.get('entry', []):
-            page_id_fallback = entry.get('id')     # entry-level id IS the page id
+            page_id_fallback = entry.get('id')     # entry id is the page id
             for change in entry.get('changes', []):
                 if change.get('field') != 'leadgen':
                     continue
-                v = change.get('value') or {}      # missing/None value -> {} -> skip
+                v = change.get('value') or {}
                 leadgen_id = v.get('leadgen_id')
                 if not leadgen_id:
                     continue
-                # Dedup: skip if a row already exists (any status). Uses
-                # search_count -- the count= kwarg on search was removed in
-                # Odoo 18.
+                # Already queued, whatever its status.
                 if self.search_count([('leadgen_id', '=', leadgen_id)]):
                     continue
                 try:
                     with self.env.cr.savepoint():
                         self.create({
                             'leadgen_id': leadgen_id,
-                            # entry.id is the authoritative page fallback.
                             'page_id': v.get('page_id') or page_id_fallback,
                             'form_id': v.get('form_id'),
                             'ad_id': v.get('ad_id'),
-                            # errors='replace' so an exotic-byte payload never
-                            # discards the event -- the audit decode must not
-                            # crash extraction. An exact-bytes copy is not
-                            # required (the drain fetches from Graph by
-                            # leadgen_id).
+                            # errors='replace': odd bytes shouldn't lose the
+                            # event. The copy doesn't need to be exact; the
+                            # drain re-fetches the lead from Graph.
                             'raw_payload': raw.decode('utf-8', errors='replace')
                                            if raw else False,
                         })
-                # Swallow only the unique-violation race (webhook+cron+Meta-
-                # resend collide between search_count and INSERT). Any other
-                # error (programming/permission/encoding bug) must propagate so
-                # a lead is never silently dropped -- this swallow is
-                # deliberately narrowed to IntegrityError only (no broad
-                # catch-all).
+                # Someone queued the same lead between the check and the
+                # insert. Only this error is ignored; anything else should
+                # raise rather than silently drop a lead.
                 except IntegrityError:
                     continue
 
     @api.model
     def _cron_drain(self, limit=50):
-        """ir.cron entry point. Lock pending rows with SKIP LOCKED so
-        overlapping cron runs / workers never double-process, then call the
-        ingest service. Retry only transient failures.
+        """Cron: process pending events.
 
-        Sibling isolation: each _process_one() call runs inside its own
-        per-event savepoint with an outer unexpected-exception handler. One bad
-        event (incl. a non-typed/programming error) must never roll back the
-        status writes of siblings already processed in this same sweep -- the
-        savepoint rollback is strictly per-event.
+        Rows are locked with SKIP LOCKED so overlapping runs don't take the
+        same event. Each event runs in its own savepoint, so one that fails
+        doesn't roll back the others.
         """
-        # Heartbeat: prove the scheduler is alive so the account form can flag a
-        # stalled cron worker (otherwise lead sync fails silently).
+        # Record that the scheduler ran, so the account form can show a
+        # stalled cron instead of sync quietly stopping.
         self.env['meta.account']._ping_scheduler_heartbeat()
         self.env.cr.execute(
             "SELECT id FROM meta_webhook_event "
@@ -125,16 +106,11 @@ class MetaWebhookEvent(models.Model):
         ids = [r[0] for r in self.env.cr.fetchall()]
         for event in self.browse(ids):
             try:
-                # The savepoint wraps the _process_one() call itself: a failure
-                # or unexpected raise on this event rolls back only this event's
-                # partial work, leaving siblings 1..N-1 intact.
                 with self.env.cr.savepoint():
                     event._process_one()
             except Exception:
-                # Unexpected (non-typed) error: isolate it. Mark ONLY this event
-                # failed (token-free) and keep draining its siblings. The typed
-                # transient/permanent handling lives in _process_one; this catches
-                # the genuinely-unexpected so the savepoint rollback is per-event.
+                # Expected Meta errors are handled in _process_one. Anything
+                # else fails just this event and the loop carries on.
                 _logger.exception(
                     "meta_webhook drain: unexpected error on event id=%s "
                     "(no payload/secret logged)", event.id)
@@ -145,16 +121,17 @@ class MetaWebhookEvent(models.Model):
                     error='Unexpected drain error')
 
     def _process_one(self):
-        """Drain one event through the ingest service. Transient -> stay
-        pending + bump attempts until MAX_ATTEMPTS, then give up; permanent/
-        auth -> fail fast. error_message + every sync.log row stay token-free:
-        str(typed-exception) is already redacted upstream."""
+        """Send one event through ingest_leadgen.
+
+        Transient errors leave it pending until MAX_ATTEMPTS, then mark it
+        failed. Permanent and auth errors fail it straight away. Exception
+        text is already redacted, so it is safe to store.
+        """
         self.ensure_one()
         page = self.env['meta.page'].search(
             [('page_id', '=', self.page_id)], limit=1)
         if not page:
-            # Error strings carry counts/redaction only -- never the Meta
-            # page-id (it reaches sale-manager-visible sync.log rows).
+            # Leave the page id out: sales managers can read sync-log rows.
             self.write({'status': 'failed',
                         'error_message': 'Unknown page; cannot process event'})
             self.env['meta.sync.log']._record(
@@ -167,9 +144,8 @@ class MetaWebhookEvent(models.Model):
                 raw=json.loads(self.raw_payload) if self.raw_payload else None)
             self.write({'status': 'done', 'lead_id': lead.id})
         except (MetaTransientError, MetaRateLimitError) as e:
-            # Persist the bump as an explicit UPDATE folded into every write, so
-            # the attempt count cannot be lost to ORM cache-flush ordering or a
-            # per-event savepoint rollback.
+            # Write attempts explicitly in each branch so the count isn't lost
+            # to cache/flush ordering.
             new_attempts = self.attempts + 1
             if new_attempts >= MAX_ATTEMPTS:
                 self.write({'attempts': new_attempts,
@@ -177,7 +153,7 @@ class MetaWebhookEvent(models.Model):
                 self.env['meta.sync.log']._record(
                     self.leadgen_id, 'webhook', 'failed', error=str(e))
             else:
-                # Stay pending; next sweep retries.
+                # Still pending; the next run retries it.
                 self.write({'attempts': new_attempts})
         except (MetaPermanentError, MetaAuthError) as e:
             self.write({'attempts': self.attempts + 1,

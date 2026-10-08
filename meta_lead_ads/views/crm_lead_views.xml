@@ -14,6 +14,7 @@
         <group string="Meta Attribution" name="meta_attribution"
                invisible="not meta_leadgen_id">
           <field name="meta_platform" readonly="1"/>
+          <field name="meta_submitted_at" readonly="1"/>
           <field name="meta_campaign_name" readonly="1"/>
           <field name="meta_adset_name" readonly="1"/>
           <field name="meta_ad_name" readonly="1"/>
@@ -43,6 +44,120 @@
       <xpath expr="//page[@name='meta_answers']" position="after">
         <group string="Meta Custom Fields" name="meta_custom_fields"
                invisible="not meta_leadgen_id"/>
+      </xpath>
+    </field>
+  </record>
+
+  <!-- Same Meta filters and group-bys on the Leads, Pipeline and Pipeline
+       Analysis search views. Group-bys go after the stock "Source" one, which
+       all three views have. -->
+  <record id="crm_lead_view_search_meta_leads" model="ir.ui.view">
+    <field name="name">crm.lead.search.meta.leads</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.view_crm_case_leads_filter"/>
+    <field name="arch" type="xml">
+      <xpath expr="//search" position="inside">
+        <field name="meta_campaign_name"/>
+        <field name="meta_adset_name"/>
+        <field name="meta_ad_name"/>
+        <field name="meta_form_name"/>
+        <separator/>
+        <filter string="Meta Leads" name="filter_meta_leads"
+                domain="[('meta_leadgen_id', '!=', False)]"/>
+        <filter string="Facebook" name="filter_meta_facebook"
+                domain="[('meta_platform', '=', 'facebook')]"/>
+        <filter string="Instagram" name="filter_meta_instagram"
+                domain="[('meta_platform', '=', 'instagram')]"/>
+        <filter string="Meta Submitted On" name="filter_meta_submitted_at"
+                date="meta_submitted_at"/>
+      </xpath>
+      <xpath expr="//filter[@name='source']" position="after">
+        <filter string="Meta Platform" name="groupby_meta_platform"
+                context="{'group_by': 'meta_platform'}"/>
+        <filter string="Meta Campaign" name="groupby_meta_campaign"
+                context="{'group_by': 'meta_campaign_name'}"/>
+        <filter string="Meta Ad Set" name="groupby_meta_adset"
+                context="{'group_by': 'meta_adset_name'}"/>
+        <filter string="Meta Ad" name="groupby_meta_ad"
+                context="{'group_by': 'meta_ad_name'}"/>
+        <filter string="Meta Form" name="groupby_meta_form"
+                context="{'group_by': 'meta_form_name'}"/>
+        <filter string="Meta Submitted On" name="groupby_meta_submitted_at"
+                context="{'group_by': 'meta_submitted_at:day'}"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="crm_lead_view_search_meta_opportunities" model="ir.ui.view">
+    <field name="name">crm.lead.search.meta.opportunities</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.view_crm_case_opportunities_filter"/>
+    <field name="arch" type="xml">
+      <xpath expr="//search" position="inside">
+        <field name="meta_campaign_name"/>
+        <field name="meta_adset_name"/>
+        <field name="meta_ad_name"/>
+        <field name="meta_form_name"/>
+        <separator/>
+        <filter string="Meta Leads" name="filter_meta_leads"
+                domain="[('meta_leadgen_id', '!=', False)]"/>
+        <filter string="Facebook" name="filter_meta_facebook"
+                domain="[('meta_platform', '=', 'facebook')]"/>
+        <filter string="Instagram" name="filter_meta_instagram"
+                domain="[('meta_platform', '=', 'instagram')]"/>
+        <filter string="Meta Submitted On" name="filter_meta_submitted_at"
+                date="meta_submitted_at"/>
+      </xpath>
+      <xpath expr="//filter[@name='source']" position="after">
+        <filter string="Meta Platform" name="groupby_meta_platform"
+                context="{'group_by': 'meta_platform'}"/>
+        <filter string="Meta Campaign" name="groupby_meta_campaign"
+                context="{'group_by': 'meta_campaign_name'}"/>
+        <filter string="Meta Ad Set" name="groupby_meta_adset"
+                context="{'group_by': 'meta_adset_name'}"/>
+        <filter string="Meta Ad" name="groupby_meta_ad"
+                context="{'group_by': 'meta_ad_name'}"/>
+        <filter string="Meta Form" name="groupby_meta_form"
+                context="{'group_by': 'meta_form_name'}"/>
+        <filter string="Meta Submitted On" name="groupby_meta_submitted_at"
+                context="{'group_by': 'meta_submitted_at:day'}"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="crm_lead_view_search_meta_analysis" model="ir.ui.view">
+    <field name="name">crm.lead.search.meta.analysis</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.crm_opportunity_report_view_search"/>
+    <field name="arch" type="xml">
+      <xpath expr="//search" position="inside">
+        <field name="meta_campaign_name"/>
+        <field name="meta_adset_name"/>
+        <field name="meta_ad_name"/>
+        <field name="meta_form_name"/>
+        <separator/>
+        <filter string="Meta Leads" name="filter_meta_leads"
+                domain="[('meta_leadgen_id', '!=', False)]"/>
+        <filter string="Facebook" name="filter_meta_facebook"
+                domain="[('meta_platform', '=', 'facebook')]"/>
+        <filter string="Instagram" name="filter_meta_instagram"
+                domain="[('meta_platform', '=', 'instagram')]"/>
+        <filter string="Meta Submitted On" name="filter_meta_submitted_at"
+                date="meta_submitted_at"/>
+      </xpath>
+      <xpath expr="//filter[@name='source']" position="after">
+        <filter string="Meta Platform" name="groupby_meta_platform"
+                context="{'group_by': 'meta_platform'}"/>
+        <filter string="Meta Campaign" name="groupby_meta_campaign"
+                context="{'group_by': 'meta_campaign_name'}"/>
+        <filter string="Meta Ad Set" name="groupby_meta_adset"
+                context="{'group_by': 'meta_adset_name'}"/>
+        <filter string="Meta Ad" name="groupby_meta_ad"
+                context="{'group_by': 'meta_ad_name'}"/>
+        <filter string="Meta Form" name="groupby_meta_form"
+                context="{'group_by': 'meta_form_name'}"/>
+        <filter string="Meta Submitted On" name="groupby_meta_submitted_at"
+                context="{'group_by': 'meta_submitted_at:day'}"/>
       </xpath>
     </field>
   </record>
