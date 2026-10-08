@@ -4,26 +4,11 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-"""Tests for the page subscription edge + the wizard verify_token/URL surface +
-the badge state mapping.
+"""Tests for page webhook subscription, the wizard's verify token and URL,
+and the subscription badge.
 
-All Graph traffic is mocked: ``_request`` is patched on ``type(client)`` (the
-class) and call args are asserted -- the three subscription methods are thin
-``_request`` wrappers (the only place a Graph URL is built). Covers:
-
-  * ``test_subscribe_args`` / ``test_status_and_unsubscribe`` -- subscribe POST /
-    status GET / unsubscribe DELETE route through ``_request`` against
-    ``'%s/subscribed_apps' % page.page_id`` with ``subscribed_fields='leadgen'``
-    + ``app_secret=page.account_id.app_secret``.
-  * ``test_app_secret_deterministic`` --
-    ``meta.account._webhook_app_secret()`` returns the lowest-id account's secret
-    (deterministic ``search([], order='id asc', limit=1)``), stable across calls.
-  * ``test_verify_token_and_url`` -- the verify_token is generated once and
-    stable across calls; the webhook URL == ``web.base.url`` + the route.
-  * ``test_badge_state_mapping`` -- the wizard's
-    ``_refresh_subscription_status`` maps a mocked ``page_subscription_status``
-    ``data[]`` to ``subscription_state`` (subscribed when the leadgen field is
-    present, not_subscribed otherwise). Token-free automated guard for the badge.
+Graph calls are mocked by patching ``_request`` on the client class; the
+subscribe/status/unsubscribe methods are thin wrappers around it.
 """
 from unittest import mock
 
@@ -34,8 +19,7 @@ VERIFY_TOKEN_PARAM = 'meta_lead_ads.webhook_verify_token'
 
 
 class SubscriptionFixtureMixin:
-    """meta.account -> meta.page chain + the graph-client class for patching
-    ``_request``."""
+    """Account and page fixtures plus the graph client class for patching."""
 
     def setUp(self):
         super().setUp()
@@ -54,18 +38,15 @@ class SubscriptionFixtureMixin:
 
 @tagged('post_install', '-at_install')
 class TestMetaSubscription(SubscriptionFixtureMixin, TransactionCase):
-    """Subscription edge + verify_token/URL + deterministic secret + badge
-    mapping."""
+    """Subscription calls, verify token, webhook URL and badge state."""
 
     def test_subscribe_args(self):
-        """subscribe_page builds POST {page_id}/subscribed_apps with
-        subscribed_fields='leadgen' + app_secret=page.account_id.app_secret,
-        routed through _request."""
+        """subscribe_page POSTs {page_id}/subscribed_apps for leadgen with the app secret."""
         with mock.patch.object(self.ClientClass, '_request') as m:
             self.client.subscribe_page(self.page)
         self.assertEqual(m.call_count, 1)
         args, kwargs = m.call_args
-        # path is the bare '<page_id>/subscribed_apps' (positional after token).
+        # The path is passed positionally, after the token.
         self.assertIn('%s/subscribed_apps' % self.page.page_id, args)
         self.assertEqual(kwargs.get('method'), 'POST')
         self.assertEqual(
@@ -74,8 +55,7 @@ class TestMetaSubscription(SubscriptionFixtureMixin, TransactionCase):
                          self.page.account_id.app_secret)
 
     def test_status_and_unsubscribe(self):
-        """page_subscription_status -> GET; unsubscribe_page -> DELETE; both
-        against the same '<page_id>/subscribed_apps' path via _request."""
+        """Status uses GET and unsubscribe uses DELETE on the same path."""
         path = '%s/subscribed_apps' % self.page.page_id
         with mock.patch.object(self.ClientClass, '_request') as m:
             self.client.page_subscription_status(self.page)
@@ -87,9 +67,7 @@ class TestMetaSubscription(SubscriptionFixtureMixin, TransactionCase):
         self.assertEqual(m2.call_args.kwargs.get('method'), 'DELETE')
 
     def test_app_secret_deterministic(self):
-        """With more than one meta.account, _webhook_app_secret() returns the
-        lowest-id account's secret (search([], order='id asc', limit=1)) and is
-        stable across calls."""
+        """With several accounts, the lowest-id account's secret is used every time."""
         second = self.env['meta.account'].create({
             'name': 'Acct2', 'account_id': 'ACC2',
             'app_id': 'app_test2', 'app_secret': 'secret_two',
@@ -98,31 +76,24 @@ class TestMetaSubscription(SubscriptionFixtureMixin, TransactionCase):
         self.assertGreater(second.id, self.account.id)
         secret1 = self.env['meta.account']._webhook_app_secret()
         secret2 = self.env['meta.account']._webhook_app_secret()
-        self.assertEqual(secret1, self.account.app_secret)   # lowest-id wins
-        self.assertEqual(secret1, secret2)                   # stable
+        self.assertEqual(secret1, self.account.app_secret)
+        self.assertEqual(secret1, secret2)
 
     def test_verify_token_and_url(self):
-        """The verify_token getter generates a value once and returns the same
-        value on a second call (stable); the webhook URL == web.base.url + the
-        route."""
+        """The verify token is generated once and the URL is web.base.url plus the route."""
         wizard = self.env['meta.onboarding'].create({})
         tok1 = wizard._ensure_verify_token()
         tok2 = wizard._ensure_verify_token()
         self.assertTrue(tok1)
         self.assertEqual(tok1, tok2)
-        # the stored config param matches the generated token.
         stored = self.env['ir.config_parameter'].sudo().get_param(
             VERIFY_TOKEN_PARAM)
         self.assertEqual(stored, tok1)
-        # the webhook URL == web.base.url + route.
         base = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
         self.assertEqual(wizard._webhook_url(), '%s%s' % (base, WEBHOOK_PATH))
 
     def test_badge_state_mapping(self):
-        """_refresh_subscription_status maps a mocked page_subscription_status
-        data[] to subscription_state -> 'subscribed' when the leadgen field is
-        present, 'not_subscribed' otherwise. Token-free automated guard for the
-        badge (live Subscribe stays a human check)."""
+        """The badge shows subscribed only when leadgen is in subscribed_fields."""
         wizard = self.env['meta.onboarding'].create({'page_id': self.page.id})
         with mock.patch.object(
                 self.ClientClass, 'page_subscription_status',

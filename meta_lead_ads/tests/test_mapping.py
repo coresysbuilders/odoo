@@ -21,24 +21,68 @@ class TestMapping(TransactionCase):
         m = self.env['meta.field.mapping'].create({
             'form_id': form.id, 'meta_key': 'email', 'crm_field_id': lead_field.id})
         self.assertTrue(m)
-        # a non-crm.lead field must be rejected by @api.constrains
         other = self.env['ir.model.fields'].search([('model', '!=', 'crm.lead')], limit=1)
         with self.assertRaises(ValidationError):
             self.env['meta.field.mapping'].create({
                 'form_id': form.id, 'meta_key': 'x', 'crm_field_id': other.id})
 
-    def test_mapping_target_must_be_stored_text(self):
-        """The ingest writes a joined display STRING, so an override target must
-        be a STORED text field. A non-text crm.lead field (monetary
-        expected_revenue) is rejected — a string write to it would fail or
-        clobber a typed value."""
+    def test_mapping_accepts_typed_targets(self):
+        """Typed crm.lead fields (monetary, relational, date, selection) are valid targets."""
         form = self._form()
-        money_field = self.env['ir.model.fields']._get(
-            'crm.lead', 'expected_revenue')
+        Field = self.env['ir.model.fields']
+        for key, fname in (('budget', 'expected_revenue'),
+                           ('country', 'country_id'),
+                           ('interests', 'tag_ids'),
+                           ('deadline', 'date_deadline'),
+                           ('priority', 'priority')):
+            m = self.env['meta.field.mapping'].create({
+                'form_id': form.id, 'meta_key': key,
+                'crm_field_id': Field._get('crm.lead', fname).id})
+            self.assertEqual(m.crm_field_type, Field._get('crm.lead', fname).ttype)
+
+    def test_mapping_rejects_system_and_readonly_targets(self):
+        """System fields, company_id, our own meta_* columns and readonly fields are rejected."""
+        form = self._form()
+        Field = self.env['ir.model.fields']
+        for fname in ('company_id', 'create_date', 'meta_campaign_name',
+                      'meta_leadgen_id', 'meta_submitted_at'):
+            with self.assertRaises(ValidationError, msg=fname):
+                self.env['meta.field.mapping'].create({
+                    'form_id': form.id, 'meta_key': 'k_%s' % fname,
+                    'crm_field_id': Field._get('crm.lead', fname).id})
+        readonly = Field.search([('model', '=', 'crm.lead'), ('store', '=', True),
+                                 ('readonly', '=', True),
+                                 ('ttype', 'in', ('char', 'integer', 'float'))],
+                                limit=1)
+        if readonly:
+            with self.assertRaises(ValidationError):
+                self.env['meta.field.mapping'].create({
+                    'form_id': form.id, 'meta_key': 'ro',
+                    'crm_field_id': readonly.id})
+
+    def test_same_field_once_per_form(self):
+        """Two questions on one form can't target the same field; one would overwrite the other."""
+        form = self._form()
+        city = self.env['ir.model.fields']._get('crm.lead', 'city')
+        self.env['meta.field.mapping'].create({
+            'form_id': form.id, 'meta_key': 'city', 'crm_field_id': city.id})
         with self.assertRaises(ValidationError):
             self.env['meta.field.mapping'].create({
-                'form_id': form.id, 'meta_key': 'budget',
-                'crm_field_id': money_field.id})
+                'form_id': form.id, 'meta_key': 'town',
+                'crm_field_id': city.id})
+
+    def test_same_field_across_forms_allowed(self):
+        """Different forms may target the same field, since a lead comes from one form."""
+        form_a = self._form()
+        form_b = self.env['meta.lead.form'].create(
+            {'name': 'F2', 'form_id': 'F2', 'page_id': form_a.page_id.id})
+        city = self.env['ir.model.fields']._get('crm.lead', 'city')
+        self.env['meta.field.mapping'].create({
+            'form_id': form_a.id, 'meta_key': 'city', 'crm_field_id': city.id})
+        m_b = self.env['meta.field.mapping'].create({
+            'form_id': form_b.id, 'meta_key': 'your_city',
+            'crm_field_id': city.id})
+        self.assertTrue(m_b)
 
     def test_mapping_target_rejects_html(self):
         """Raw Meta answers must not be routed into stored HTML fields."""

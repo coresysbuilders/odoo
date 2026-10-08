@@ -4,27 +4,17 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-"""Public ack-then-defer webhook for Meta Lead Ads.
+"""Public webhook endpoint for Meta Lead Ads.
 
-One route at /meta_lead_ads/webhook:
-  * GET  completes Meta's verify-token handshake (constant-time on the
-         configured-token path).
-  * POST verifies the X-Hub-Signature-256 HMAC over the raw request bytes
-         with hmac.compare_digest before any json.loads, then inserts one
-         pending meta.webhook.event row and returns 200 only after that row
-         is durably persisted (Odoo's request-end auto-commit). On a
-         persistence failure it returns a token-free 500 so Meta retries.
+GET answers Meta's verify-token handshake. POST checks the
+X-Hub-Signature-256 HMAC over the raw request bytes, stores a pending
+meta.webhook.event row and returns 200. The Graph lookups and the lead
+creation happen later in the cron drain, so the response stays fast; Meta
+disables a subscription that keeps timing out.
 
-Invariants:
-  * type='http' (not 'json') so request.httprequest.get_data() returns the
-    exact raw bytes Meta signed; csrf=False.
-  * No Graph reads in-request: this file imports no Graph client and makes
-    no outbound Graph call. The cron drain does the deferred Graph work.
-  * No crm.lead creation here -- the sole create path is the deferred
-    ingest_leadgen via the cron drain.
-  * Every reject and the 500 return an empty body plus a status code --
-    never echo the payload, the App Secret, or the verify token, and no log
-    line ever carries a secret or the payload.
+The route is type='http' so get_data() gives us the exact bytes Meta signed.
+Rejections return an empty body: never echo the payload or any secret, and
+never log them either.
 """
 import hashlib
 import hmac
@@ -38,14 +28,12 @@ from odoo.http import request, Response
 _logger = logging.getLogger(__name__)
 
 VERIFY_TOKEN_PARAM = 'meta_lead_ads.webhook_verify_token'
-# A genuine Meta signature is 'sha256=' + a 64-char lowercase hex digest. The
-# hex shape is validated before compare_digest so a crafted oversized/typed
-# digest gets the same empty 403 and never reaches compare_digest (which would
-# otherwise TypeError -> 500 -> Meta needlessly retries).
+# Meta signs with 'sha256=' plus 64 lowercase hex chars. Checking the shape
+# first means junk gets a plain 403; compare_digest raises TypeError on
+# non-ASCII input, which would turn into a 500 and make Meta retry.
 _SIG_HEX_RE = re.compile(r'[0-9a-f]{64}')
-# A genuine leadgen notification is a few KB. Cap well above that and reject
-# anything larger before buffering the body, so an unauthenticated caller
-# cannot force a worker to read a large unsigned payload into memory.
+# Real leadgen notifications are a few KB. Anything over this is refused
+# before we read the body, so an unsigned caller can't make us buffer it.
 MAX_WEBHOOK_BYTES = 64 * 1024
 
 
@@ -54,11 +42,9 @@ class MetaWebhookController(http.Controller):
     @http.route('/meta_lead_ads/webhook', type='http', auth='public',
                 csrf=False, methods=['GET', 'POST'], save_session=False)
     def meta_webhook(self, **kwargs):
-        # One fixed public route, auth='public', csrf=False, GET+POST.
-        # save_session=False is a minor hardening; if an Odoo build rejects the
-        # kwarg, a TypeError on an unsupported kwarg fails the whole controllers
-        # package registration at module load, so omit it then -- behavior is
-        # unaffected.
+        # save_session=False just avoids creating a session per webhook call.
+        # If an Odoo build ever rejects the kwarg, drop it: the route would
+        # otherwise fail to register at module load.
         if request.httprequest.method == 'GET':
             return self._handle_verify(kwargs)
         return self._handle_event()
@@ -71,16 +57,12 @@ class MetaWebhookController(http.Controller):
         expected = request.env['ir.config_parameter'].sudo().get_param(
             VERIFY_TOKEN_PARAM) or ''
         if not expected:
-            # Setup diagnostic: a Meta-side handshake configured before the
-            # wizard generates the token would otherwise be a silent 403
-            # deadlock. Log only that it is empty -- never the token value.
+            # Without this, subscribing in Meta before the onboarding wizard
+            # has generated a token is just a silent 403.
             _logger.warning(
                 'webhook verify_token not configured; GET handshake will fail')
-        # Constant-time digest compare on the configured-token path (no == on the
-        # token). NOTE: the overall branch is not constant-time across every reject
-        # path (mode / empty-token short-circuits resolve fast) -- the
-        # security-relevant guarantee is the constant-time compare_digest on the
-        # configured-token path, not full-branch constant-time.
+        # The token comparison itself is constant-time. The early outs on mode
+        # and an empty token are not, but they leak nothing about the token.
         if (mode == 'subscribe' and expected
                 and hmac.compare_digest(str(token), str(expected))):
             return Response(challenge or '', status=200)
@@ -88,51 +70,37 @@ class MetaWebhookController(http.Controller):
 
     # ---- POST: signed leadgen event --------------------------------------
     def _handle_event(self):
-        # Strict ordering matters here. Do the cheap header/size rejections
-        # BEFORE buffering the body, so an unauthenticated caller cannot force a
-        # worker to read a large unsigned payload into memory.
-        # 1. Signature header must be "sha256=<hex>"; unsigned / wrong scheme
-        #    -> 403. No body read yet.
+        # Order matters: cheap header and size checks come before reading the
+        # body, and the HMAC check comes before json parsing.
         header = request.httprequest.headers.get('X-Hub-Signature-256', '')
         if not header.startswith('sha256='):
             return Response('', status=403)
         sent_hex = header.split('=', 1)[1]
-        # 2. Validate the digest shape before compare: exactly 64 lowercase hex
-        #    chars. A malformed/forged digest gets the same empty 403.
         if not _SIG_HEX_RE.fullmatch(sent_hex):
             return Response('', status=403)
-        # 3. Reject an oversized declared body before reading it -> 413.
         content_length = request.httprequest.content_length
         if content_length is not None and content_length > MAX_WEBHOOK_BYTES:
             return Response('', status=413)
-        # 4. Now buffer the raw bytes -- needed verbatim for the HMAC. The len
-        #    re-check also covers a chunked request that declared no length.
-        raw = request.httprequest.get_data()               # bytes, untouched
+        # The HMAC needs the bytes exactly as sent. Re-check the length for
+        # chunked requests that declared none.
+        raw = request.httprequest.get_data()
         if len(raw) > MAX_WEBHOOK_BYTES:
             return Response('', status=413)
-        # 5. App Secret via a narrow named sudo (the public user has no record
-        #    ACL; never log/echo it). No configured secret -> cannot
-        #    authenticate any POST -> empty 403.
+        # The public user can't read meta.account, hence the sudo. With no
+        # secret configured we can't authenticate anything, so refuse.
         app_secret = request.env['meta.account'].sudo()._webhook_app_secret()
         if not app_secret:
             return Response('', status=403)
         expected_hex = hmac.new(
             app_secret.encode('utf-8'), raw, hashlib.sha256).hexdigest()
-        # 6. Constant-time compare before json.loads -- forged -> 403, no parse.
         if not hmac.compare_digest(sent_hex, expected_hex):
             return Response('', status=403)
-        # 7. Parse only after the signature is proven genuine.
         try:
             data = json.loads(raw.decode('utf-8'))
         except (ValueError, UnicodeDecodeError):
             return Response('', status=400)                # signed but malformed
-        # 8. Durable-persist-then-200: the model owns the dedup INSERT and
-        #    creates no crm.lead. Do not manually commit the request cursor
-        #    here -- a manual commit bypasses Odoo's transaction manager and can
-        #    corrupt the ORM cache; Odoo's request-end auto-commit makes the
-        #    pending row durable. If the persist raises, return a token-free
-        #    empty 500 so Meta retries (never a premature 200, never a leak in
-        #    the 500 body).
+        # Don't commit the cursor by hand; Odoo commits at the end of the
+        # request. If storing the event fails, answer 500 so Meta retries.
         try:
             request.env['meta.webhook.event'].sudo()._ingest_payload(
                 data, raw=raw)
@@ -140,8 +108,5 @@ class MetaWebhookController(http.Controller):
             _logger.error("meta_webhook: could not persist verified event "
                           "(no secret/payload logged)")
             return Response('', status=500)
-        # 9. Fast 200 for a genuine signature so Meta does not disable the
-        #    subscription. A validly-signed replay reaches here too and also
-        #    returns 200 (the model dedups; no duplicate) -- never a 4xx for a
-        #    valid replay.
+        # A signed replay also gets 200; the model dedups it.
         return Response('EVENT_RECEIVED', status=200)

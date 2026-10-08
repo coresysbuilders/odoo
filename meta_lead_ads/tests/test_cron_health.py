@@ -4,11 +4,10 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-"""Scheduler self-check: the module flags when Odoo's cron worker isn't
-actually running its jobs (which otherwise makes lead sync fail silently).
+"""Scheduler health check.
 
-Covers the heartbeat ping, the on-demand health classification across its
-states (ok / pending / stalled / disabled), and the manual check action.
+If Odoo's cron worker isn't running, lead sync stops without any error, so
+the module tracks a heartbeat and reports ok / pending / stalled / disabled.
 """
 from datetime import timedelta
 
@@ -31,20 +30,20 @@ class TestSchedulerHealth(TransactionCase):
         self.ICP.set_param(key, fields.Datetime.to_string(dt) if dt else '')
 
     def test_ok_when_recent_heartbeat(self):
-        """A fresh heartbeat is positive proof the scheduler is running."""
+        """A recent heartbeat reports ok."""
         self.drain.active = True
         self._set(self.HB, fields.Datetime.now())
         self.assertEqual(self.Account._scheduler_health()['status'], 'ok')
 
     def test_stalled_when_heartbeat_stale_and_nextcall_overdue(self):
-        """No recent run and a nextcall frozen well in the past -> stalled."""
+        """An old heartbeat with an overdue nextcall reports stalled."""
         self.drain.active = True
         self._set(self.HB, fields.Datetime.now() - timedelta(hours=2))
         self.drain.nextcall = fields.Datetime.now() - timedelta(hours=2)
         self.assertEqual(self.Account._scheduler_health()['status'], 'stalled')
 
     def test_pending_right_after_install(self):
-        """Freshly installed, no run yet, nextcall not overdue -> pending."""
+        """Just installed with no run yet reports pending."""
         self.drain.active = True
         self._set(self.HB, False)
         self._set(self.INST, fields.Datetime.now())
@@ -52,8 +51,7 @@ class TestSchedulerHealth(TransactionCase):
         self.assertEqual(self.Account._scheduler_health()['status'], 'pending')
 
     def test_stalled_when_never_ran_since_old_install(self):
-        """Installed a while ago, still no run, even if nextcall isn't yet
-        overdue -> stalled (the scheduler never confirmed itself)."""
+        """No run hours after install reports stalled, even if nextcall isn't overdue."""
         self.drain.active = True
         self._set(self.HB, False)
         self._set(self.INST, fields.Datetime.now() - timedelta(hours=2))
@@ -61,8 +59,7 @@ class TestSchedulerHealth(TransactionCase):
         self.assertEqual(self.Account._scheduler_health()['status'], 'stalled')
 
     def test_disabled_when_cron_inactive(self):
-        """An inactive drain cron is reported distinctly so the admin re-enables
-        it rather than chasing a server misconfig."""
+        """An archived drain cron reports disabled, not stalled."""
         self.drain.active = False
         self.assertEqual(self.Account._scheduler_health()['status'], 'disabled')
 
@@ -84,7 +81,7 @@ class TestSchedulerHealth(TransactionCase):
         self.assertIn('message', action['params'])
 
     def test_computed_status_on_account(self):
-        """The form-facing computed field mirrors the health status."""
+        """The account's cron_status field shows the health status."""
         self.drain.active = True
         self._set(self.HB, fields.Datetime.now())
         account = self.Account.create({'name': 'B', 'account_id': 'ACC_SCHED2'})

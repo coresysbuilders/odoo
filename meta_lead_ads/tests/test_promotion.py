@@ -6,37 +6,16 @@
 
 """Tests for promoting a captured Meta question to a custom crm.lead field.
 
-These tests pin the contract of the promotion wizard (``meta.promote.answer``
-with ``action_promote`` / ``action_promote_to_field`` and the
-``_derive_tech_name`` sanitizer).
+Covers the ``meta.promote.answer`` wizard (``action_promote``), the answer-line
+entry ``action_promote_to_field`` and the ``_derive_tech_name`` sanitizer.
 
-Conventions:
-  - ``@tagged('post_install', '-at_install')`` so crm + the module are fully
-    installed (the ``crm_lead_view_form_meta`` anchor exists).
-  - ``assertRaises`` takes a SINGLE exception class, never a tuple (a tuple
-    TypeErrors at runtime on Odoo's TransactionCase).
-  - Use ``search_count(...)``; the legacy ``count=`` kwarg was removed in
-    Odoo 18.
-  - Promoted-field invariants the @api.constrains on meta.field.mapping pins:
-    crm_field_id must be model=='crm.lead', store==True, ttype in (char, text).
-    No setUp here weakens that constraint.
-
-Test isolation note (inline backfill): promotion creates a ``state='manual'``
-field and calls ``registry.setup_models`` inline. That mutates the
-process-level registry, which TransactionCase's per-test cursor rollback does
-NOT revert — a promoted ``x_meta_<key>`` field lingers in the in-memory
-``_fields`` after the test. So every functional test derives a field name
-unique to the test method (``self.K`` / ``self.T``); no two tests share a
-derived column name, so the lingering registry entries never collide.
-Production is unaffected (each promote is its own request and Odoo signals the
-registry reload across workers).
-
-Identifiers asserted against:
-  - model ``meta.promote.answer`` (the wizard)
-  - ``action_promote`` (server method; in-method has_group gate)
-  - ``action_promote_to_field`` (alias / entry from the answer line)
-  - ``_derive_tech_name`` (the sanitizer; ``x_meta_`` prefix, 63-byte cap,
-    deterministic ``x_meta_<hash>`` fallback)
+Promotion creates a manual field and calls ``registry.setup_models`` inline.
+The registry lives at process level, so the test cursor rollback does not
+remove the new ``x_meta_<key>`` field from ``_fields``. Each test therefore
+derives its own field name from the method name (``self.K`` / ``self.T``) so
+leftover registry entries never collide. Production isn't affected: each
+promote is its own request and Odoo signals the registry reload to other
+workers.
 """
 from odoo.tests.common import TransactionCase, tagged
 from odoo.exceptions import UserError
@@ -48,21 +27,17 @@ class TestPromotion(TransactionCase):
 
     def setUp(self):
         super().setUp()
-        # The promote action is admin-gated via an in-method has_group check.
-        # Functional tests act as a Meta admin; the non-admin rejection path is
-        # covered by TestPromotionSecurity.
+        # Promotion checks has_group inside the method; act as a Meta admin.
+        # The non-admin path is covered by TestPromotionSecurity.
         self.env.user.groups_id |= self.env.ref(
             'meta_lead_ads.group_meta_admin')
-        # Per-test-unique question key + its derived technical name. Unique per
-        # method so the INLINE setup_models registry leak (not reverted by the
-        # cursor rollback) never collides across tests.
+        # Question key unique to this test, so the leftover registry fields
+        # from other tests can't collide with it.
         self.K = 'q_%s' % self._testMethodName
         self.T = self.env['meta.promote.answer']._derive_tech_name(self.K)
 
     def _form(self):
-        """Account -> page -> form chain. IDs are unique per call so a single
-        test can build more than one form chain without tripping the
-        account/page/form UNIQUE constraints (used by the cross-form tests)."""
+        """Create an account, page and form with ids unique per call."""
         n = getattr(self, '_form_seq', 0) + 1
         self._form_seq = n
         acc = self.env['meta.account'].create(
@@ -74,11 +49,11 @@ class TestPromotion(TransactionCase):
 
     def _lead_with_answer(self, form, question_key=None, label='Budget',
                           value='$5k', form_ref=None):
-        """Create a crm.lead carrying ONE meta.lead.answer row for
-        ``question_key`` (defaults to the per-test ``self.K``) and link the
-        lead's source form via meta_form_id_ref (so the wizard can resolve the
-        source form). ``form_ref`` overrides the linked form (pass False to
-        exercise the no-source-form guard)."""
+        """Create a lead with one answer row, linked to its source form.
+
+        ``question_key`` defaults to ``self.K``. Pass ``form_ref=False`` to
+        leave the lead without a source form.
+        """
         if question_key is None:
             question_key = self.K
         ref = form if form_ref is None else form_ref
@@ -93,13 +68,11 @@ class TestPromotion(TransactionCase):
         return lead
 
     def _answer(self, lead):
-        """The first meta.lead.answer row on a lead."""
+        """Return the lead's first answer row."""
         return lead.answer_ids[:1]
 
     def _promote(self, lead, user=None):
-        """Build the promote wizard for a lead's first answer and invoke its
-        server method. Centralizes the identifiers so a contract change touches
-        one place."""
+        """Open the promote wizard on the lead's first answer and run it."""
         answer = self._answer(lead)
         Wizard = self.env['meta.promote.answer']
         if user is not None:
@@ -111,20 +84,18 @@ class TestPromotion(TransactionCase):
         return wizard.action_promote()
 
     def _new_field(self, tech_name):
-        """The ir.model.fields row for a promoted crm.lead column, or empty."""
+        """Return the crm.lead ir.model.fields row for ``tech_name``, if any."""
         return self.env['ir.model.fields'].search([
             ('model', '=', 'crm.lead'), ('name', '=', tech_name)], limit=1)
 
     def _custom_view_name(self, tech_name):
-        """The deterministic name of the per-field inherited view (search-
-        before-create key for duplicate-view avoidance)."""
+        """Return the name promotion gives the field's inherited view."""
         return 'crm.lead.form.meta.custom.%s' % tech_name
 
-    # ---- (1) field creation ----------------------------------------------
+    # ---- field creation --------------------------------------------------
 
     def test_promote_creates_manual_char_field(self):
-        """Promote creates a state='manual', ttype='char', store=True field
-        named x_meta_<sanitized> on crm.lead."""
+        """Promotion creates a stored manual char field x_meta_<key> on crm.lead."""
         form = self._form()
         lead = self._lead_with_answer(form)
         self._promote(lead)
@@ -135,11 +106,10 @@ class TestPromotion(TransactionCase):
         self.assertTrue(field.store)
         self.assertEqual(field.model, 'crm.lead')
 
-    # ---- (2) sanitizer base case -----------------------------------------
+    # ---- sanitizer, base case --------------------------------------------
 
     def test_sanitizer_base_case(self):
-        """_derive_tech_name lowercases, maps non-[a-z0-9_] to _, collapses
-        repeats, trims, and prepends x_meta_ for a representative ugly key."""
+        """_derive_tech_name turns a messy label into a clean lowercase x_meta_ name."""
         name = self.env['meta.promote.answer']._derive_tech_name(
             "What's your Budget?? (USD)")
         self.assertTrue(name.startswith('x_meta_'))
@@ -149,17 +119,15 @@ class TestPromotion(TransactionCase):
         self.assertFalse(name.endswith('_'))
         self.assertIn('budget', name)
 
-    # ---- (3) collision (never clobber) -----------------------------------
+    # ---- collision -------------------------------------------------------
 
     def test_promote_collision_blocks_and_never_clobbers(self):
-        """When the derived name already exists and is NOT a reuse-eligible
-        manual char/text stored field, promote raises UserError and never
-        clobbers the existing field definition.
+        """An existing incompatible field at the derived name blocks promotion and is left as is.
 
-        The sanitizer always prepends ``x_meta_`` (it can never derive onto a
-        stock crm.lead column), so a genuine collision is staged by
-        pre-creating a NON-reuse-eligible field (manual but ttype='integer') at
-        the derived name."""
+        The sanitizer always adds ``x_meta_``, so it can't hit a stock column.
+        The collision is staged with a manual integer field, which can't be
+        reused for a char answer.
+        """
         form = self._form()
         lead = self._lead_with_answer(form, value='High')
         model_rec = self.env['ir.model']._get('crm.lead')
@@ -170,24 +138,18 @@ class TestPromotion(TransactionCase):
         before_ttype = self._new_field(self.T).ttype
         self.assertEqual(before_ttype, 'integer', "precondition")
         with self.assertRaises(UserError):
-            # reuse_confirmed is not set -> a non-reuse-eligible collision blocks.
             self._promote(lead)
-        # never clobbered: the pre-existing field keeps its definition.
         self.assertEqual(self._new_field(self.T).ttype, before_ttype)
 
-    # ---- (4) no source form — full no-side-effects ------------------------
+    # ---- no source form --------------------------------------------------
 
     def test_promote_blocks_when_no_source_form(self):
-        """A lead carrying an answer but with meta_form_id_ref == False (form
-        never discovered or deleted) must raise UserError (single class) and
-        leave NO side effects: no x_meta_ field, no mapping row, no inherited
-        view, no pending-backfill marker."""
+        """Without a source form, promotion raises UserError and creates nothing."""
         form = self._form()
         lead = self._lead_with_answer(form, form_ref=False)
         self.assertFalse(lead.meta_form_id_ref)
         with self.assertRaises(UserError):
             self._promote(lead)
-        # FULL no-side-effects.
         self.assertFalse(
             self._new_field(self.T),
             "no field must be created when the source form is missing")
@@ -205,11 +167,10 @@ class TestPromotion(TransactionCase):
                     [('meta_key', '=', self.K)]), 0,
                 "no pending-backfill marker on the null-form path")
 
-    # ---- (5) exactly one mapping row on the source form ------------------
+    # ---- mapping row -----------------------------------------------------
 
     def test_promote_creates_single_mapping_on_source_form(self):
-        """Exactly one meta.field.mapping row is created, on the source form
-        only, with meta_key==question_key and crm_field_id == the new field."""
+        """Promotion adds one mapping row, on the source form, pointing at the new field."""
         form = self._form()
         lead = self._lead_with_answer(form)
         self._promote(lead)
@@ -218,23 +179,19 @@ class TestPromotion(TransactionCase):
         self.assertEqual(len(mappings), 1)
         self.assertEqual(mappings.crm_field_id, self._new_field(self.T))
 
-    # ---- (6) backfill ----------------------------------------------------
+    # ---- backfill --------------------------------------------------------
 
     def test_backfill_writes_value_into_new_field(self):
-        """Backfill writes meta.lead.answer.value into the new field on every
-        existing lead carrying that (form, key). Reads answer.value directly
-        (the deterministic display string)."""
+        """Promotion backfills the answer value into the new field on existing leads."""
         form = self._form()
         lead = self._lead_with_answer(form, value='$5k')
         self._promote(lead)
         self.assertEqual(lead[self.T], '$5k')
 
-    # ---- (7) re-promote no-op --------------------------------------------
+    # ---- re-promote ------------------------------------------------------
 
     def test_repromote_is_noop(self):
-        """Re-promoting an already-promoted (form, key) is a no-op: no
-        duplicate field, no duplicate mapping row, no duplicate inherited
-        view."""
+        """Promoting the same form and key again creates no duplicate field, mapping or view."""
         form = self._form()
         lead = self._lead_with_answer(form)
         self._promote(lead)
@@ -249,12 +206,10 @@ class TestPromotion(TransactionCase):
             self.env['ir.ui.view'].search_count([
                 ('name', '=', self._custom_view_name(self.T))]), 1)
 
-    # ---- (8) inherited view injection ------------------------------------
+    # ---- inherited view --------------------------------------------------
 
     def test_promote_creates_inherited_view(self):
-        """An inherited ir.ui.view (model crm.lead, inherit_id ==
-        meta_lead_ads.crm_lead_view_form_meta) is created injecting the new
-        field."""
+        """Promotion adds an inherited crm.lead form view that shows the new field."""
         form = self._form()
         lead = self._lead_with_answer(form)
         self._promote(lead)
@@ -266,17 +221,13 @@ class TestPromotion(TransactionCase):
         self.assertEqual(view.inherit_id, anchor)
         self.assertIn(self.T, view.arch_db or '')
 
-    # ---- (9) integration loop (mocked Graph client) ----------------------
+    # ---- ingest after promotion ------------------------------------------
 
     def test_integration_loop_autofills_after_promotion(self):
-        """After promotion, a fresh ingest_leadgen of a lead carrying that
-        question auto-fills x_meta_<key> via the _map_fields consumption path —
-        zero ingest-code change. Uses the mocked Graph client idiom from
-        test_ingest.py (patch on type(client), never a recordset)."""
+        """After promotion, a newly ingested lead fills x_meta_<key> through the normal mapping."""
         from unittest import mock
         form = self._form()
         page = form.page_id
-        # promote first so the mapping row + field exist.
         seed = self._lead_with_answer(form, value='seed')
         self._promote(seed)
         field = self._new_field(self.T)
@@ -291,7 +242,7 @@ class TestPromotion(TransactionCase):
                 {'name': self.K, 'values': ['$9k']},
             ],
             'campaign_id': 'C1', 'campaign_name': 'Summer',
-            # MUST match the promoted form so _map_fields finds the mapping.
+            # Must be the promoted form, or _map_fields won't find the mapping.
             'form_id': form.form_id, 'platform': 'fb',
         }
         with mock.patch.multiple(
@@ -302,14 +253,10 @@ class TestPromotion(TransactionCase):
             new_lead = Ingest.ingest_leadgen(page, 'LGNEW', 'manual')
         self.assertEqual(new_lead[self.T], '$9k')
 
-    # ---- (8b) static anchor render proof ---------------------------------
+    # ---- view anchor -----------------------------------------------------
 
     def test_meta_custom_fields_anchor_renders(self):
-        """The static ``meta_custom_fields`` anchor group must resolve into the
-        composed crm.lead form arch — i.e. the runtime field injection has a
-        real xpath target — not merely be present as unparsed source text.
-        Asserts against the composed view via ``get_view`` (Odoo 18) on the
-        crm_lead_view_form_meta lineage."""
+        """The meta_custom_fields group is present in the composed crm.lead form view."""
         from lxml import etree
         anchor = self.env.ref('meta_lead_ads.crm_lead_view_form_meta')
         composed = self.env['crm.lead'].get_view(view_id=anchor.id,
@@ -321,65 +268,59 @@ class TestPromotion(TransactionCase):
             "the static 'meta_custom_fields' anchor group must render into the "
             "composed crm.lead form arch (the runtime injection target)")
 
-    # ---- (9b) answer-line entry point (action_promote_to_field) -----------
+    # ---- answer-line entry point -----------------------------------------
 
     def test_answer_line_entry_point_opens_wizard(self):
-        """The answer-line entry ``action_promote_to_field`` on a
-        meta.lead.answer row opens / drives the promote wizard (the action a
-        user clicks from a captured answer)."""
+        """action_promote_to_field on an answer row returns an action."""
         form = self._form()
         lead = self._lead_with_answer(form)
         answer = self._answer(lead)
         result = answer.action_promote_to_field()
         self.assertTrue(result)
 
-    # ---- (10) sanitizer edge cases ---------------------------------------
+    # ---- sanitizer edge cases --------------------------------------------
 
     def test_sanitizer_edge_cases(self):
-        """_derive_tech_name edge cases: empty/whitespace, punctuation/emoji-
-        only, non-ASCII, already-prefixed, long-key truncation collision, and
-        the 63-byte cap."""
+        """_derive_tech_name handles empty, symbol-only, non-ASCII, prefixed and long keys."""
         derive = self.env['meta.promote.answer']._derive_tech_name
 
-        # (a) EMPTY/whitespace -> deterministic x_meta_<hash>, NEVER bare.
+        # Blank input falls back to x_meta_<hash>, never a bare prefix.
         empty = derive('   ')
         self.assertTrue(empty.startswith('x_meta_'))
         self.assertNotEqual(empty, 'x_meta_')
         self.assertNotEqual(empty, 'x_meta')
         self.assertTrue(len(empty) > len('x_meta_'))
 
-        # (b) PUNCTUATION/EMOJI-only -> same deterministic-hash fallback.
-        punct = derive('??? \U0001F3AF')   # "??? 🎯"
+        # Punctuation and emoji only: same hash fallback.
+        punct = derive('??? \U0001F3AF')
         self.assertTrue(punct.startswith('x_meta_'))
         self.assertNotEqual(punct, 'x_meta_')
 
-        # (c) NON-ASCII -> safe x_meta_-prefixed within the byte cap.
+        # Non-ASCII stays within the 63-byte limit.
         nonascii = derive('ميزانية')
         self.assertTrue(nonascii.startswith('x_meta_'))
         self.assertLessEqual(len(nonascii.encode('utf-8')), 63)
 
-        # (d) ALREADY-x_meta_-prefixed -> MUST NOT double-prefix.
+        # An already prefixed key is not prefixed twice.
         already = derive('x_meta_budget')
         self.assertFalse(already.startswith('x_meta_x_meta_'))
         self.assertTrue(already.startswith('x_meta_'))
 
-        # (e) LONG-KEY TRUNCATION COLLISION -> distinct names because the hash
-        #     suffix is computed from the FULL original key.
+        # Long keys that truncate the same still differ, because the hash
+        # suffix is taken from the full key.
         prefix = 'a' * 60
         name_a = derive(prefix + 'AAAA')
         name_b = derive(prefix + 'BBBB')
         self.assertNotEqual(name_a, name_b)
 
-        # (f) BYTE CAP -> a multi-byte name's UTF-8 encoding is <= 63 BYTES.
+        # The limit is in UTF-8 bytes, not characters.
         multibyte = derive('م' * 40)
         self.assertLessEqual(len(multibyte.encode('utf-8')), 63)
 
-    # ---- (11) duplicate inherited view avoidance -------------------------
+    # ---- duplicate view --------------------------------------------------
 
     def test_no_duplicate_inherited_view(self):
-        """Promoting the same (form, key) twice creates AT MOST ONE inherited
-        view named crm.lead.form.meta.custom.<tech_name> (search-before-create
-        proof)."""
+        """Promoting twice leaves a single inherited view for the field."""
         form = self._form()
         lead = self._lead_with_answer(form)
         self._promote(lead)
@@ -388,16 +329,13 @@ class TestPromotion(TransactionCase):
             self.env['ir.ui.view'].search_count([
                 ('name', '=', self._custom_view_name(self.T))]), 1)
 
-    # ---- (12) partial-failure recovery -----------------------------------
+    # ---- partial failure recovery ----------------------------------------
 
     def test_recover_field_without_mapping(self):
-        """A half-promoted state — the x_meta_ field exists but NO mapping row
-        for (form, key) — must RECOVER on promote (create the missing mapping +
-        view + backfill), NOT raise a spurious collision UserError and NOT
-        silently no-op leaving the mapping missing."""
+        """If the field exists but its mapping is missing, promotion adds the mapping instead of failing."""
         form = self._form()
         lead = self._lead_with_answer(form, value='$5k')
-        # Pre-create the field directly (no mapping) to simulate the half state.
+        # Field without a mapping, as left by an interrupted promotion.
         model_row = self.env['ir.model']._get('crm.lead')
         self.env['ir.model.fields'].sudo().create({
             'name': self.T, 'model_id': model_row.id,
@@ -406,20 +344,35 @@ class TestPromotion(TransactionCase):
         self.assertEqual(
             self.env['meta.field.mapping'].search_count([
                 ('form_id', '=', form.id), ('meta_key', '=', self.K)]), 0)
-        # Promote must recover, not raise collision.
         self._promote(lead)
         mapping = self.env['meta.field.mapping'].search([
             ('form_id', '=', form.id), ('meta_key', '=', self.K)], limit=1)
         self.assertTrue(mapping, "promote must create the missing mapping")
         self.assertEqual(mapping.crm_field_id, self._new_field(self.T))
 
-    # ---- (13) concurrency backstop ---------------------------------------
+    # ---- multiple forms / repeated promote -------------------------------
+
+    def test_promote_same_question_on_second_form_reuses_field(self):
+        """Promoting the same question from a second form reuses the field and adds a mapping."""
+        form_a, form_b = self._form(), self._form()
+        self._promote(self._lead_with_answer(form_a))
+        field = self._new_field(self.T)
+        self.assertTrue(field)
+        lead_b = self._lead_with_answer(form_b, value='$9k')
+        self._promote(lead_b)
+        self.assertEqual(self.env['ir.model.fields'].search_count([
+            ('model', '=', 'crm.lead'), ('name', '=', self.T)]), 1)
+        mappings = self.env['meta.field.mapping'].search(
+            [('crm_field_id', '=', field.id)])
+        self.assertEqual(mappings.form_id, form_a | form_b)
+        self.assertEqual(lead_b[self.T], '$9k')
 
     def test_double_promote_single_mapping(self):
-        """Two SEQUENTIAL promotes of the same (form, key) — the in-test
-        stand-in for a concurrent race — yield exactly ONE mapping row and ONE
-        field. The TRUE multi-worker race backstop is the DB
-        unique(form_id, meta_key) SQL constraint on meta.field.mapping."""
+        """Two promotes of the same form and key give one mapping and one field.
+
+        This runs sequentially; across workers the unique(form_id, meta_key)
+        constraint on meta.field.mapping is what stops a duplicate.
+        """
         form = self._form()
         lead = self._lead_with_answer(form)
         self._promote(lead)
@@ -431,32 +384,25 @@ class TestPromotion(TransactionCase):
             self.env['ir.model.fields'].search_count([
                 ('model', '=', 'crm.lead'), ('name', '=', self.T)]), 1)
 
-    # ---- (14) backfill conflict / filter semantics -----------------------
+    # ---- backfill rules --------------------------------------------------
 
     def test_backfill_filter_and_conflict_rules(self):
-        """Backfill filter + conflict rules:
-          (i)   a lead on a DIFFERENT form carrying the same question_key is
-                NOT backfilled (filter by source_form + question_key + linked
-                lead, not answer value alone);
-          (ii)  a target lead whose new field is already non-empty is NOT
-                clobbered (enrich-blank-only);
-          (iii) an answer row with empty/falsy value is skipped (no write);
-          (iv)  MULTIPLE answer rows for the same (lead, question_key) -> a
-                deterministic SINGLE write (first by sequence, id per _order);
-          (v)   an over-length value is written as-is (no crash).
+        """Backfill only fills blank fields on leads from the source form.
+
+        Leads from other forms, empty answers and already filled fields are
+        left alone. With several answers for one key the first by sequence
+        wins, and long values are written unchanged.
         """
         form = self._form()
         other_form = self._form()
 
-        # target on the SOURCE form (will be backfilled).
         target = self._lead_with_answer(form, value='$5k')
-        # (i) DIFFERENT-form lead with the same key -> must NOT be backfilled.
+        # Same key on another form: must not be backfilled.
         cross = self._lead_with_answer(other_form, value='other')
-        # (ii) a lead on the source form whose field gets hand-edited later.
+        # Edited by hand later to check backfill doesn't overwrite it.
         prefilled = self._lead_with_answer(form, value='ignored')
-        # (iii) a lead on the source form with an empty answer value.
         empty_lead = self._lead_with_answer(form, value='')
-        # (iv) a lead with TWO answer rows for the same key -> deterministic.
+        # Two answers for the same key.
         multi = self.env['crm.lead'].create({
             'name': 'Multi', 'type': 'lead', 'meta_form_id_ref': form.id})
         self.env['meta.lead.answer'].create({
@@ -465,24 +411,18 @@ class TestPromotion(TransactionCase):
         self.env['meta.lead.answer'].create({
             'lead_id': multi.id, 'question_key': self.K,
             'sequence': 2, 'value': 'second'})
-        # (v) an over-length value.
         long_value = 'X' * 5000
         over = self._lead_with_answer(form, value=long_value)
 
         self._promote(target)
 
-        # (i) cross-form lead untouched.
         self.assertFalse(cross[self.T])
-        # source-form target filled.
         self.assertEqual(target[self.T], '$5k')
-        # (iii) empty-value lead skipped (no write -> falsy).
         self.assertFalse(empty_lead[self.T])
-        # (iv) deterministic single write: first by sequence, id.
         self.assertEqual(multi[self.T], 'first')
-        # (v) over-length written as-is.
         self.assertEqual(over[self.T], long_value)
 
-        # (ii) enrich-blank-only: hand-edit a value, re-run backfill, no clobber.
+        # Hand-edit a value and promote again: the edit is kept.
         prefilled[self.T] = 'HAND_EDITED'
         self._promote(target)
         self.assertEqual(prefilled[self.T], 'HAND_EDITED')

@@ -4,26 +4,17 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-# Read-only Leads Analytics Dashboard aggregation surface.
+# Leads analytics dashboard: read-only aggregation for the admin dashboard.
 #
-# Load-bearing rules:
-#   - This is the ONLY new server code in Phase 11 and is STRICTLY READ-ONLY:
-#     zero create/write/unlink, no Graph call, no sync trigger. The keystone
-#     single-create ingest path (ingest_leadgen) is untouched.
-#   - In-method admin gate FIRST (D-14 / T-11-EoP): a non-group_meta_admin
-#     caller — with OR without group_meta_user — hits AccessError before any
-#     read. The menu groups= hides the UI but cannot stop a direct ORM/RPC call.
-#   - NEVER read secret-grouped fields (access_token / app_secret / raw_payload)
-#     and never sudo()-read them into the payload (D-15 / T-11-ID). The health
-#     and sync_recent shapes are ALLOWLISTED so they can never widen to leak a
-#     token / expiry / raw payload.
+# Nothing here writes, calls Graph or triggers a sync. Callers must be Meta
+# Admins; the check runs in the method because a menu groups= does not stop a
+# direct RPC call. Secret fields (access_token, app_secret, raw_payload) are
+# never read into the payload, and the health / recent-sync dicts are built
+# from a fixed set of keys so they can't grow to include one.
 #
-# Odoo 18 ORM contract:
-#   _read_group(domain, groupby, aggregates) returns a LIST OF TUPLES (not legacy
-#   dicts). Code unpacks the tuples; it never indexes a dict key and never calls
-#   the legacy read_group(fields=...). The create_date:<g> bucket granularity is
-#   DERIVED server-side from a fixed enum {day,week,month,quarter,year} — never
-#   the client-supplied period_mode, and NEVER create_date:custom.
+# _read_group() returns a list of tuples, not the old read_group() dicts.
+# The create_date:<g> granularity is picked server-side from
+# day/week/month/quarter/year; the client's period_mode never reaches it.
 import logging
 
 from dateutil.relativedelta import relativedelta
@@ -33,33 +24,29 @@ from odoo.exceptions import AccessError
 
 _logger = logging.getLogger(__name__)
 
-# Allowlist of client-supplied period modes (V5 input validation, T-11-Tamper).
-# Anything else is coerced to the default so a crafted RPC can never inject an
-# arbitrary token into the derived create_date:<g> groupby string.
+# Accepted period modes. Anything else falls back to the default, so a crafted
+# RPC can't inject text into the create_date:<g> groupby string.
 _PERIOD_MODES = ('month', 'quarter', 'year', 'custom')
 _DEFAULT_PERIOD_MODE = 'month'
 
-# Min-volume guard for the CONVERSION ranking ONLY.
-# Applied as a PYTHON filter after grouping — NOT a SQL having= (unsupported in
-# Odoo 18 _read_group). The donut VOLUME list keeps ALL campaigns incl. sub-N.
+# Campaigns below this many leads are left out of the conversion ranking (the
+# rates are noise). Filtered in Python since _read_group has no having=. The
+# volume donut still shows every campaign.
 _MIN_RANK_VOLUME = 10
 
-# Drill-down / donut row caps — bound the payload (grouped reads, no per-row
-# loops).
+# Rows returned per drill-down list.
 _DRILLDOWN_TOP = 10
 
-# Webhook-evidence freshness window. A trigger='webhook' sync-log row newer than
-# this proves the webhook is delivering; older-but-present history => waiting;
-# no webhook rows ever => unknown. Evidence-based, never inheriting scheduler ok
-# (do not mask a dead webhook).
+# A webhook-triggered sync-log row newer than this means the webhook is
+# delivering. Older rows only => waiting; none at all => unknown.
 _WEBHOOK_FRESH_HOURS = 24
 
-# Token "expiring soon" threshold. expires_at is readonly (not secret-grouped),
-# but the RAW expiry value is never emitted into the caption (T-11-ID).
+# Days before expiry at which a token shows as "expiring soon". The expiry
+# date itself is never put in the caption.
 _TOKEN_EXPIRY_SOON_DAYS = 7
 
-# Worst-status severity ordering (higher = worse). The roll-up takes the max
-# severity per signal across active accounts.
+# Higher is worse. Each health signal reports the worst value across active
+# accounts.
 _SEVERITY = {
     'ok': 0,
     'pending': 1,
@@ -78,42 +65,31 @@ _SEVERITY = {
 
 
 class MetaDashboard(models.Model):
-    # Ride the existing meta.account ACL via _inherit — no new ir.model.access
-    # row is required (the surface is admin-gated in-method anyway).
+    # Extends meta.account so it reuses that model's ACL; access is checked in
+    # the method anyway.
     _inherit = 'meta.account'
 
     # ------------------------------------------------------------------ #
-    # Public read-only entry point.
+    # Public entry point.
     # ------------------------------------------------------------------ #
     @api.model
     def get_dashboard_metrics(self, date_from=None, date_to=None,
                               period_mode='month'):
-        """Return ONE JSON-serializable dict with the full dashboard payload.
+        """Return the full dashboard payload as one JSON-serializable dict.
 
-        STRICTLY READ-ONLY: no create/write/unlink, no Graph call, no sync
-        trigger. Admin-gated as the FIRST statement.
-
-        Window coherence (D-06/D-12): series, kpis, conversion, campaigns,
-        drilldown and deltas all use the SAME half-open UTC window. sync_recent
-        and health are EXEMPT — sync_recent is the GLOBAL latest-5 operational
-        heartbeat (D-16) and health is a worst-status roll-up across accounts
-        (D-15).
+        Read-only. Series, KPIs, conversion, campaigns, drill-down and deltas
+        share the same half-open UTC window. sync_recent (latest 5 rows) and
+        health (worst status across accounts) ignore the window.
         """
-        # Admin gate FIRST — before any read (T-11-EoP). Generic copy: never
-        # echo a backend/Graph error string (T-11-ID-err).
+        # Check access before reading anything. Keep the message generic.
         if not self.env.user.has_group('meta_lead_ads.group_meta_admin'):
             raise AccessError(_("Meta Admin access required."))
 
-        # The has_group gate above is the authorization boundary (T-11-EoP).
-        # The aggregation itself runs sudo from here on: a Meta Admin is not
-        # necessarily a CRM/Sales user, so the cross-model reads (crm.lead,
-        # meta.sync.log, meta.account status) would otherwise AccessError for a
-        # legitimate non-system Meta Admin. No secret-grouped field
-        # (access_token / app_secret / raw_payload) is ever read into the
-        # payload, so elevating the read does NOT widen disclosure (T-11-ID).
+        # Past the group check, read as sudo: a Meta Admin isn't necessarily a
+        # Sales user and would otherwise hit AccessError on crm.lead. No secret
+        # field is read below, so this doesn't expose anything extra.
         self = self.sudo()
 
-        # Validate / coerce period_mode against the allowlist (T-11-Tamper).
         if period_mode not in _PERIOD_MODES:
             period_mode = _DEFAULT_PERIOD_MODE
 
@@ -125,20 +101,16 @@ class MetaDashboard(models.Model):
         win = meta + [('create_date', '>=', d_from),
                       ('create_date', '<', d_to)]
 
-        # -- leads-over-time series (single _read_group, TUPLE-unpacked) --
-        # bucket ∈ {day,week,month,quarter,year} — DERIVED, never 'custom'.
+        # Leads over time. bucket is one of day/week/month/quarter/year.
         rows = Lead._read_group(win, [f'create_date:{bucket}'], ['__count'])
         series = [{'bucket': self._bucket_label(b, bucket), 'count': c}
                   for (b, c) in rows]
 
-        # -- totals / conversion (search_count, never a per-bucket loop) --
         total = Lead.search_count(win)
         opp = Lead.search_count(win + [('type', '=', 'opportunity')])
-        # 'won' counted via stage_id.is_won kept in the DOMAIN within the cohort
-        # (RESEARCH VBB#6 — not the groupby).
+        # Won = leads created in the window that now sit in a won stage.
         won = Lead.search_count(win + [('stage_id.is_won', '=', True)])
 
-        # -- sync-log KPIs over the same window --
         Log = self.env['meta.sync.log']
         logwin = [('create_date', '>=', d_from), ('create_date', '<', d_to)]
         synced = Log.search_count(
@@ -163,21 +135,18 @@ class MetaDashboard(models.Model):
             'campaigns': campaigns,
             'conversion_ranking': ranked,
             'drilldown': self._dashboard_drilldown(meta, d_from, d_to),
-            # EXEMPT from DASH-06 window coherence — global operational heartbeat.
+            # These two ignore the selected window.
             'sync_recent': self._dashboard_sync_recent(),
-            # EXEMPT from window coherence — worst-status roll-up across accounts.
             'health': self._dashboard_health(),
             'deltas': self._dashboard_deltas(meta, d_from, d_to, period_mode),
         }
 
     @api.model
     def _bucket_label(self, value, bucket):
-        """Human, JSON-serializable x-axis label for a leads-over-time bucket.
+        """Format a bucket start date as a chart label, e.g. 'Jun 2026'.
 
-        ``value`` is the _read_group period-start (a date/datetime) for
-        ``create_date:<bucket>``; format it per granularity so the chart axis
-        reads e.g. 'Jun 2026' instead of a raw '2026-06-01 00:00:00' (WR-04).
-        Falsy -> ''; a non-date value falls back to str() defensively.
+        Returns '' for a falsy value and str(value) for anything that isn't a
+        date.
         """
         if not value:
             return ''
@@ -192,30 +161,26 @@ class MetaDashboard(models.Model):
             return 'W%02d %s' % (iso[1], iso[0])
         if bucket == 'month':
             return value.strftime('%b %Y')
-        # day (and any unexpected fallback)
         return value.strftime('%d %b %Y')
 
     # ------------------------------------------------------------------ #
-    # period_mode -> DERIVED bucket_granularity window helpers.
+    # Window and bucket helpers.
     # ------------------------------------------------------------------ #
     @api.model
     def _dashboard_window(self, date_from, date_to, period_mode):
-        """Return (d_from, d_to, bucket_granularity) as half-open UTC datetimes.
+        """Return (d_from, d_to, bucket) as half-open naive-UTC datetimes.
 
-        Named periods (month/quarter/year) are derived from an anchor (today by
-        default, D-09) via relativedelta and carry the matching named bucket.
-        'custom' uses the explicit date_from/date_to (treated as the user's
-        local day-range, normalized to UTC half-open datetimes) and DERIVES the
-        bucket by span (≤31d→day, ≤365d→month, else year). NEVER 'custom'.
+        month/quarter/year cover the current unit around the anchor (today
+        unless date_from is given). 'custom' uses date_from/date_to and picks
+        the bucket from the span: up to 31 days -> day, up to 365 -> month,
+        otherwise year.
         """
         if period_mode == 'custom' and date_from and date_to:
             d_from = self._as_utc_dt(date_from)
             d_to = self._as_utc_dt(date_to)
-            # Guard an inverted or zero-width custom range (To <= From): fall back
-            # to the default named window instead of emitting a nonsense empty
-            # dashboard with a forward-shifted prior period (WR-02). The frontend
-            # sends an inclusive To (advanced one day) so a normal single-day
-            # selection is a valid 1-day window, not zero-width.
+            # An empty or inverted range falls back to the default period. The
+            # client already pushes To forward one day, so picking a single day
+            # still gives a 1-day window.
             if d_to <= d_from:
                 return self._dashboard_window(None, None, _DEFAULT_PERIOD_MODE)
             delta_days = (d_to - d_from).days
@@ -227,15 +192,11 @@ class MetaDashboard(models.Model):
                 bucket = 'year'
             return d_from, d_to, bucket
 
-        # Named period anchored on the start of the current named unit (default
-        # anchor = today). An explicit date_from anchors the named period for
-        # determinism (used by the metric tests); otherwise today.
+        # date_from, when given, pins the anchor (the tests rely on this).
         anchor = self._as_utc_dt(date_from) if date_from \
             else fields.Datetime.now()
-        # The series bucket is intentionally FINER than the window length so the
-        # leads-over-time line chart draws a real multi-point line instead of a
-        # single dot (UAT test 3): month->day (~30 pts), quarter->week (~13 pts),
-        # year->month (12 pts). period_mode still passes through unchanged.
+        # Bucket one step finer than the period so the line chart has points to
+        # draw: month by day, quarter by week, year by month.
         if period_mode == 'quarter':
             q_month = ((anchor.month - 1) // 3) * 3 + 1
             d_from = anchor.replace(
@@ -248,7 +209,7 @@ class MetaDashboard(models.Model):
                 month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
             d_to = d_from + relativedelta(years=1)
             bucket = 'month'
-        else:   # 'month' (and the coerced default)
+        else:   # month
             d_from = anchor.replace(
                 day=1, hour=0, minute=0, second=0, microsecond=0)
             d_to = d_from + relativedelta(months=1)
@@ -257,38 +218,34 @@ class MetaDashboard(models.Model):
 
     @api.model
     def _as_utc_dt(self, value):
-        """Coerce a client-supplied date/datetime/string into a naive-UTC
-        datetime (Odoo stores create_date as naive UTC). Tolerant of a date,
-        a datetime, or an ISO/Odoo string."""
+        """Turn a date, datetime or date string into a naive UTC datetime,
+        which is how Odoo stores create_date."""
         dt = fields.Datetime.to_datetime(value)
         if dt is None:
             dt = fields.Datetime.now()
-        # to_datetime returns a naive datetime for naive input and strips tz for
-        # aware input; ensure tz-naive so domain comparisons stay UTC-consistent.
         if dt.tzinfo is not None:
             dt = dt.replace(tzinfo=None)
         return dt
 
     @api.model
     def _dashboard_prev_window(self, d_from, d_to, period_mode):
-        """Return the previous equal-length (prev_from, prev_to) half-open
-        window. Named periods shift one unit; custom shifts by the span."""
+        """Return (prev_from, prev_to) for the period just before this one."""
         if period_mode == 'quarter':
             return d_from - relativedelta(months=3), d_from
         if period_mode == 'year':
             return d_from - relativedelta(years=1), d_from
         if period_mode == 'month':
             return d_from - relativedelta(months=1), d_from
-        # custom: equally-long range immediately before d_from.
+        # custom: same length, ending where this window starts.
         return d_from - (d_to - d_from), d_from
 
     # ------------------------------------------------------------------ #
-    # Relative deltas vs the previous equal-length period (D-11).
+    # Change vs the previous period.
     # ------------------------------------------------------------------ #
     @api.model
     def _dashboard_deltas(self, meta, d_from, d_to, period_mode):
-        """Per-KPI RELATIVE delta (current - prior) / prior; value None when the
-        prior-period count is 0 (hide-delta-when-no-prior, D-11)."""
+        """Relative change per KPI vs the previous period. None when the
+        previous count is 0, so the UI hides the delta."""
         prev_from, prev_to = self._dashboard_prev_window(
             d_from, d_to, period_mode)
         Lead = self.env['crm.lead']
@@ -322,40 +279,33 @@ class MetaDashboard(models.Model):
 
     @api.model
     def _relative_delta(self, current, prior):
-        """(current - prior) / prior, or None when prior == 0 (no baseline)."""
+        """(current - prior) / prior, or None when prior is 0."""
         if not prior:
             return None
         return (current - prior) / prior
 
     # ------------------------------------------------------------------ #
-    # Campaign donut (ALL campaigns) + min-volume-guarded conversion ranking
-    # (DASH-03).
+    # Campaign donut and conversion ranking.
     # ------------------------------------------------------------------ #
     @api.model
     def _dashboard_campaigns(self, meta, d_from, d_to):
         """Return (donut, ranked).
 
-        donut = the FULL volume list grouped by meta_campaign_name with both a
-        NULL (False) and a blank ('') key collapsed to 'Unattributed' — ALL
-        campaigns incl. sub-threshold ones. Each entry carries per-campaign
-        opportunity_rate + won_rate.
-
-        ranked = the CONVERSION ranking with the N=10 min-volume guard applied
-        as a PYTHON filter (no SQL having=).
+        donut lists every campaign by volume, with missing names grouped as
+        'Unattributed'. ranked is the same list minus campaigns under
+        _MIN_RANK_VOLUME leads.
         """
         donut = self._dashboard_group_conversion(
             meta, d_from, d_to, 'meta_campaign_name', top=None)
-        # Min-volume guard for the conversion ranking ONLY (donut keeps all).
         ranked = [c for c in donut if c['count'] >= _MIN_RANK_VOLUME]
         return donut, ranked
 
     # ------------------------------------------------------------------ #
-    # Drill-down to top ads / ad sets by volume (DASH-08).
+    # Drill-down: top ads and ad sets.
     # ------------------------------------------------------------------ #
     @api.model
     def _dashboard_drilldown(self, meta, d_from, d_to):
-        """Top ads / ad sets by volume with per-row conversion, same window.
-        Computed from a small number of grouped reads (no per-row loops)."""
+        """Top ads and ad sets by volume, with conversion rates."""
         return {
             'ads': self._dashboard_group_conversion(
                 meta, d_from, d_to, 'meta_ad_name', top=_DRILLDOWN_TOP),
@@ -366,24 +316,23 @@ class MetaDashboard(models.Model):
     @api.model
     def _dashboard_group_conversion(self, meta, d_from, d_to, group_field,
                                     top=None):
-        """Group Meta leads in the window by ``group_field`` and derive volume +
-        per-bucket opportunity_rate/won_rate using exactly THREE grouped reads
-        (total / opportunity / won), tuple-unpacked. False OR '' keys collapse
-        to 'Unattributed'. Optionally cap to the ``top`` buckets by volume.
+        """Group window leads by ``group_field`` with count, opportunity_rate
+        and won_rate, sorted by count and cut to ``top`` rows if given.
+
+        Uses three grouped reads (all, opportunities, won). Empty or blank
+        names are merged under 'Unattributed'.
         """
         Lead = self.env['crm.lead']
         win = meta + [('create_date', '>=', d_from), ('create_date', '<', d_to)]
 
         def _label(key):
-            # Collapse BOTH NULL (False) and blank ('') to 'Unattributed'.
-            # Trailing whitespace-only names also collapse.
             return key.strip() if (key and key.strip()) else 'Unattributed'
 
         totals = {}
         order = []
         for (key, count) in Lead._read_group(win, [group_field], ['__count']):
             label = _label(key)
-            # Distinct False/'' rows both map to 'Unattributed' — merge them.
+            # False and '' come back as separate groups; merge them.
             if label not in totals:
                 totals[label] = {'count': 0, 'opp': 0, 'won': 0}
                 order.append(label)
@@ -417,20 +366,16 @@ class MetaDashboard(models.Model):
         return rows
 
     # ------------------------------------------------------------------ #
-    # GLOBAL latest-5 recent sync log (DASH-04 / D-16).
-    # EXEMPT from DASH-06 period coherence — this is the operational heartbeat
-    # ('Recent' / 'last 5'), INDEPENDENT of the window argument (decision
-    # 2026-06-19). NEVER reads raw_payload (secret-grouped).
+    # Recent sync activity (not limited to the selected window).
     # ------------------------------------------------------------------ #
     @api.model
     def _dashboard_sync_recent(self):
-        """The 5 newest meta.sync.log rows OVERALL (empty domain), newest-first
-        via the model _order='create_date desc'. Allowlisted to EXACTLY
-        {status, meta_leadgen_id, create_date} — never raw_payload."""
+        """The 5 newest sync-log rows, with status, lead id and date only.
+        raw_payload is never read."""
         rows = self.env['meta.sync.log'].search_read(
             [], ['status', 'meta_leadgen_id', 'create_date'], limit=5)
-        # search_read injects 'id'; strip to the allowlisted shape so the
-        # payload can never widen past {status, meta_leadgen_id, create_date}.
+        # Rebuild each row so only these three keys go out (search_read also
+        # adds 'id').
         return [{
             'status': r['status'],
             'meta_leadgen_id': r['meta_leadgen_id'],
@@ -439,15 +384,12 @@ class MetaDashboard(models.Model):
         } for r in rows]
 
     # ------------------------------------------------------------------ #
-    # System Health worst-status roll-up (DASH-05 / D-15).
-    # EXEMPT from window coherence — across all active accounts. Each signal is
-    # a FIXED-SHAPE {status, label, caption} object exposing NO secret values.
+    # System health, worst status across active accounts.
     # ------------------------------------------------------------------ #
     @api.model
     def _dashboard_health(self):
-        """Return {'webhook': {...}, 'scheduler': {...}, 'token': {...}}, each a
-        fixed {status, label, caption} object. No access_token / app_secret /
-        raw_payload / raw expiry value is ever emitted."""
+        """Return webhook, scheduler and token signals, each a
+        {status, label, caption} dict. No token or expiry value is included."""
         accounts = self.env['meta.account'].search([('active', '=', True)])
         caption = self._health_caption(accounts)
         return {
@@ -458,9 +400,8 @@ class MetaDashboard(models.Model):
 
     @api.model
     def _health_caption(self, accounts):
-        """A token-free 'checked {relative time}' caption from the OLDEST
-        last_checked across accounts (worst freshness). Never emits the raw
-        timestamp or any token/expiry value."""
+        """Caption like 'checked 2 hours ago', based on the account checked
+        longest ago."""
         checks = [c for c in accounts.mapped('last_checked') if c]
         if not checks:
             return _("not yet checked")
@@ -470,8 +411,7 @@ class MetaDashboard(models.Model):
 
     @api.model
     def _health_scheduler(self, caption):
-        """Scheduler signal from the existing global _scheduler_health() helper,
-        called ONCE. Maps to UI-SPEC Running/Waiting/Not running/Disabled."""
+        """Scheduler signal, mapped from meta.account._scheduler_health()."""
         health = self.env['meta.account']._scheduler_health()
         labels = {
             'ok': _("Running"), 'pending': _("Waiting"),
@@ -486,10 +426,12 @@ class MetaDashboard(models.Model):
 
     @api.model
     def _health_webhook(self, caption):
-        """Evidence-based webhook signal: recent trigger='webhook'
-        sync-log activity → running; webhook history but none recent → waiting;
-        no webhook rows ever → unknown. NEVER inherits scheduler 'ok' to mask a
-        dead webhook."""
+        """Webhook signal, judged from webhook-triggered sync-log rows only.
+
+        Recent rows -> running, only older rows -> waiting, none -> unknown.
+        It doesn't borrow the scheduler status, which could hide a dead
+        webhook.
+        """
         Log = self.env['meta.sync.log']
         fresh_cutoff = fields.Datetime.to_string(
             fields.Datetime.now() - relativedelta(hours=_WEBHOOK_FRESH_HOURS))
@@ -501,17 +443,15 @@ class MetaDashboard(models.Model):
         elif Log.search_count([('trigger', '=', 'webhook')]):
             status, label = 'waiting', _("Waiting")
         else:
-            # No webhook rows ever => 'unknown' (severity-1/warn). Label matches
-            # the warn semantics — 'Not running' reads as a hard failure and
-            # contradicts the amber pill (WR-03); reserve it for a real stall.
+            # A warning, not a failure: "Not running" would clash with the
+            # amber pill, so keep that label for a real stall.
             status, label = 'unknown', _("No activity yet")
         return {'status': status, 'label': label, 'caption': caption}
 
     @api.model
     def _health_token(self, accounts, caption):
-        """Token signal from token_valid / access_status / expires_at across
-        accounts. Maps to UI-SPEC Valid/Expiring soon/Invalid. The RAW expiry
-        value is NEVER emitted into the caption (T-11-ID)."""
+        """Token signal (valid / expiring / invalid) from token_valid,
+        access_status and expires_at. The expiry date is not returned."""
         now = fields.Datetime.now()
         soon = now + relativedelta(days=_TOKEN_EXPIRY_SOON_DAYS)
         worst = 'valid'
@@ -524,7 +464,7 @@ class MetaDashboard(models.Model):
                 code = 'valid'
             if _SEVERITY.get(code, 0) > _SEVERITY.get(worst, 0):
                 worst = code
-        # No active accounts at all reads as 'invalid' (nothing healthy proven).
+        # No active account means no working token.
         if not accounts:
             worst = 'invalid'
         labels = {

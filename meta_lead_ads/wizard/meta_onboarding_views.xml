@@ -40,10 +40,9 @@
                      invisible="state != 'done'">
                     Connection saved. Pages and lead forms have been imported.
                 </div>
-                <!-- Per-page webhook subscription control plus the read-only
-                     verify_token / URL surface. The whole wizard is Meta
-                     Admin-only (menu + ACL), so the verify_token is only ever
-                     shown to an admin. -->
+                <!-- Webhook subscription per page, plus the URL and verify
+                     token to paste into Meta. Only Meta admins can open this
+                     wizard, so only they see the token. -->
                 <group invisible="state != 'done'">
                     <group string="Webhook Subscription">
                         <field name="page_id"/>
@@ -76,11 +75,8 @@
         </field>
     </record>
 
-    <!-- meta_onboarding_action is kept — the Settings "Connect to Meta" button
-         (res_config_settings_views.xml) reuses it. The standalone Connect
-         menuitem was dropped in favour of the single Settings home; its existing
-         DB row is unlinked on upgrade by the explicit ir.ui.menu delete record in
-         views/meta_settings_menu.xml. -->
+    <!-- Opened by the "Connect to Meta" button in Settings; there is no menu
+         entry for it. -->
     <record id="meta_onboarding_action" model="ir.actions.act_window">
         <field name="name">Connect to Meta</field>
         <field name="res_model">meta.onboarding</field>

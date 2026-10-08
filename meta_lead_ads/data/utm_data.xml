@@ -6,14 +6,9 @@
 -->
 <odoo>
   <data noupdate="1">
-    <!-- Stock Odoo already ships a "Facebook" utm.source
-         (external id utm.utm_source_facebook), so we deliberately reuse it rather
-         than recreate it. utm.source names are unique, so a second "Facebook"
-         would just be auto-suffixed to "Facebook [2]" — a duplicate we don't want.
-         Attribution resolves Facebook via that stock id.
-
-         Stock Odoo ships no Instagram source and no "Paid Social" medium, so we
-         seed those two here under stable external ids. -->
+    <!-- Facebook is not created here: Odoo already has utm.utm_source_facebook,
+         and a second one would be renamed "Facebook [2]". Odoo has no Instagram
+         source or "Paid Social" medium, so we add those. -->
     <record id="utm_source_meta_instagram" model="utm.source">
       <field name="name">Instagram</field>
     </record>

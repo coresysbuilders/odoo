@@ -14,10 +14,9 @@ class TestSecurity(TransactionCase):
         super().setUp()
         self.user_group = self.env.ref('meta_lead_ads.group_meta_user')
         self.admin_group = self.env.ref('meta_lead_ads.group_meta_admin')
-        # base.group_user makes these realistic internal (non-share) users;
-        # without it Odoo sets share=True (portal semantics) and ACL tests can
-        # pass for the wrong reasons. group_meta_admin implies group_meta_user
-        # via implied_ids, so the admin auto-gains it -- no need to add it.
+        # Without base.group_user Odoo makes these share (portal) users and
+        # the ACL tests can pass for the wrong reason. group_meta_admin
+        # already implies group_meta_user.
         base_internal = self.env.ref('base.group_user')
         self.meta_user = self.env['res.users'].create({
             'name': 'Meta U', 'login': 'meta_u',
@@ -28,9 +27,7 @@ class TestSecurity(TransactionCase):
 
     def test_meta_user_readonly(self):
         self.env['meta.account'].create({'name': 'X', 'account_id': 'A'})
-        # read allowed
         self.env['meta.account'].with_user(self.meta_user).search([])
-        # create denied
         with self.assertRaises(AccessError):
             self.env['meta.account'].with_user(self.meta_user).create(
                 {'name': 'Y', 'account_id': 'B'})
@@ -44,22 +41,18 @@ class TestSecurity(TransactionCase):
     def test_admin_implies_user(self):
         self.assertIn(self.user_group, self.meta_admin.groups_id)
 
-    # ---- field-level groups= on token / app_secret -----------------------
-    # The secret fields (access_token / app_secret) carry
-    # groups='meta_lead_ads.group_meta_admin'. App ID is NOT secret — it must
-    # stay readable.
+    # access_token and app_secret are restricted to group_meta_admin.
+    # App ID is not a secret and stays readable.
 
     def test_non_admin_cannot_read_account_token(self):
         acc = self.env['meta.account'].create({
             'name': 'X', 'account_id': 'A', 'app_id': '100',
             'access_token': 'SECRET_TOK', 'app_secret': 'SECRET_APP'})
-        # Non-secret fields stay readable; App ID is NOT secret.
         rec = acc.with_user(self.meta_user).read(['name', 'app_id'])
         self.assertIn('name', rec[0])
         self.assertIn('app_id', rec[0])
-        # Odoo 18: an EXPLICIT read() of a groups=-gated field RAISES AccessError
-        # (it is only silently dropped on an implicit read-all / a group-gated
-        # view) — mirrors the test_sync_log_security pattern.
+        # Reading a groups= field by name raises; it is only dropped
+        # silently when reading all fields.
         with self.assertRaises(AccessError):
             acc.with_user(self.meta_user).read(['access_token'])
         with self.assertRaises(AccessError):
@@ -77,50 +70,41 @@ class TestSecurity(TransactionCase):
         page = self.env['meta.page'].create({
             'name': 'P', 'page_id': 'PG1', 'account_id': acc.id,
             'access_token': 'PAGE_SECRET'})
-        # Non-secret field readable; explicit read of the gated token RAISES on
-        # Odoo 18 (field-level groups=).
         rec = page.with_user(self.meta_user).read(['name'])
         self.assertIn('name', rec[0])
         with self.assertRaises(AccessError):
             page.with_user(self.meta_user).read(['access_token'])
 
-    # ---- Meta Settings section gated to group_meta_admin -------------------
-    # A groups=-gated FIELD read raises AccessError on Odoo 18 — so the whole
-    # Meta <app> section is gated, and a non-Meta system admin must never render
-    # the Meta fields. Asserted via the resolved view architecture, not raw
-    # ir.ui.view XML.
+    # A groups= field raises AccessError on read, so the whole Meta settings
+    # block is hidden from users outside group_meta_admin. Checked on the
+    # resolved view arch, not the raw ir.ui.view.
 
     def test_non_meta_admin_cannot_see_settings_section(self):
-        """The Meta Settings <app> (and its lead_name_template field) renders for
-        a group_meta_admin user but NOT for a base.group_system-only admin who is
-        not in group_meta_admin."""
+        """The Meta settings block shows for a Meta admin but not a plain system admin."""
         base_internal = self.env.ref('base.group_user')
         sys_group = self.env.ref('base.group_system')
         sys_only = self.env['res.users'].create({
             'name': 'Sys Only', 'login': 'sec_sysonly',
             'groups_id': [(6, 0, [base_internal.id, sys_group.id])]})
         Settings = self.env['res.config.settings']
-        # Admin (group_meta_admin) sees the Meta section + field.
         admin_arch = Settings.with_user(self.meta_admin).get_view()['arch']
         self.assertIn('lead_name_template', admin_arch)
         self.assertIn('meta_lead_ads', admin_arch)
-        # The non-Meta system admin's resolved arch hides the gated section.
         sys_arch = Settings.with_user(sys_only).get_view()['arch']
         self.assertNotIn('lead_name_template', sys_arch)
 
-    # ---- the res.config.settings ACL is not a settings back door -----------
-
     def test_non_system_meta_admin_cannot_mutate_foreign_setting(self):
-        """A group_meta_admin user who is NOT base.group_system CAN save the
-        Meta template, but set_values must NOT become a back door to mutate other
-        modules' global settings — super().set_values() is delegated only for a
-        full Settings admin. self.meta_admin (from setUp) is a non-system Meta admin."""
+        """A Meta admin without Settings rights saves the Meta template but no other module's setting.
+
+        set_values() only calls super() for base.group_system users, so the
+        settings ACL we grant can't be used to change unrelated parameters.
+        """
         ICP = self.env['ir.config_parameter'].sudo()
         Settings = self.env['res.config.settings']
         LEAD_NAME_PARAM = 'meta_lead_ads.lead_name_template'
 
-        # Find ANY foreign (non-Meta) boolean config-parameter settings field to
-        # prove containment without coupling to a specific dependency.
+        # Any non-Meta boolean config parameter will do; avoid depending on
+        # a particular module.
         foreign = None
         for fname, f in Settings._fields.items():
             cp = getattr(f, 'config_parameter', None)
@@ -131,14 +115,11 @@ class TestSecurity(TransactionCase):
         create_vals = {'lead_name_template': 'X {form_name}'}
         if foreign:
             fname, cp = foreign
-            ICP.set_param(cp, 'meta_wr01_baseline')   # sentinel != 'True'/'False'
-            create_vals[fname] = True                 # attempt to flip it via super()
+            ICP.set_param(cp, 'meta_test_baseline')   # sentinel, not 'True'/'False'
+            create_vals[fname] = True                 # try to flip it
 
         Settings.with_user(self.meta_admin).create(create_vals).set_values()
 
-        # Positive: the non-system Meta admin DID persist the Meta template.
         self.assertEqual(ICP.get_param(LEAD_NAME_PARAM), 'X {form_name}')
         if foreign:
-            # Containment: the foreign setting is untouched because super() was
-            # skipped for this non-system Meta admin.
-            self.assertEqual(ICP.get_param(foreign[1]), 'meta_wr01_baseline')
+            self.assertEqual(ICP.get_param(foreign[1]), 'meta_test_baseline')

@@ -8,38 +8,29 @@ from odoo import api, fields, models
 
 
 class CrmLead(models.Model):
-    _inherit = 'crm.lead'   # extend the core model in place — do not set _name
+    _inherit = 'crm.lead'
 
-    # Idempotency key. Nullable (no required=True — non-Meta leads stay NULL).
-    # No index=True: the UNIQUE constraint below auto-creates the backing index.
-    # copy=False so duplicating a lead in the UI does not carry the unique id.
+    # Idempotency key; NULL on non-Meta leads. The UNIQUE constraint below
+    # creates the index. copy=False so a duplicated lead doesn't clash.
     meta_leadgen_id = fields.Char(string='Meta Lead ID', copy=False)
 
-    # Title provenance. True ONLY while ``name`` is still the
-    # Meta-rendered title: set by the create path, kept True by the retroactive
-    # rename, and CLEARED by any manual ``name`` write (see ``write`` below).
-    # The retro-rename acts ONLY on flag-True leads, so a human-edited title is
-    # never clobbered (even one shaped like the default), and a lead generated
-    # under ANY template — not just the default skeleton — is recognized.
-    # copy=False so a duplicated lead is treated as a fresh (non-generated) row.
+    # True while ``name`` is still the generated title. A manual rename clears
+    # it (see write), and the retroactive rename only touches leads where it
+    # is set, so hand-edited titles are never overwritten.
     meta_name_is_generated = fields.Boolean(
         string='Meta Title Auto-Generated', default=False, copy=False)
 
     def write(self, vals):
-        """Clear the auto-generated provenance flag on any MANUAL ``name`` edit so
-        the retroactive rename never overwrites a human-set title. A write
-        that explicitly carries ``meta_name_is_generated`` (the retro rename and
-        the create path's follow-up writes) is honoured as-is."""
+        """Clear meta_name_is_generated when the name is edited by hand.
+
+        Writes that set the flag explicitly (the retroactive rename) keep it."""
         if 'name' in vals and 'meta_name_is_generated' not in vals:
             vals = dict(vals, meta_name_is_generated=False)
         return super().write(vals)
 
-    # Stored, indexed normalized-phone column so business dedup matches by an
-    # indexed SQL '=' instead of loading every open phone-bearing lead and
-    # normalizing in Python on the ingest hot path. The normalizer lives on
-    # meta.lead.ingest and is reused here, so the
-    # stored value and the incoming lookup key are normalized identically.
-    # copy=False — a duplicated lead recomputes from its own phone.
+    # Stored, indexed normalized phone so dedup can match with SQL '=' instead
+    # of normalizing every open lead in Python. Uses the same normalizer as
+    # meta.lead.ingest so both sides agree.
     meta_phone_normalized = fields.Char(
         string='Normalized Phone (Meta dedup)',
         compute='_compute_meta_phone_normalized', store=True, index=True,
@@ -52,21 +43,20 @@ class CrmLead(models.Model):
             lead.meta_phone_normalized = Ingest._normalize_phone(lead.phone) or False
 
     def _meta_token_map(self):
-        """Return the ``{token: value}`` map for ``meta.lead.ingest.render_lead_name``
-        from this lead's stored ``meta_*`` fields (plus ``contact_name``).
+        """Return the token values for render_lead_name from this lead's meta_* fields.
 
-        ``{date}`` here is the ORM ``create_date`` audit date — an APPROXIMATION
-        of the Meta ``created_time`` (no Meta create-date is stored on crm.lead).
-        It is provided for the FORWARD / PREVIEW path only. The retroactive-rename
-        action (``res.config.settings.action_retro_rename_meta_leads``)
-        NEVER trusts this for ``{date}``-bearing templates: when the active
-        template contains ``{date}`` it SKIPS those leads outright rather than
-        risk a wrong-date rename — especially for cron-backfilled leads whose
-        Meta ``created_time`` differs from the Odoo row's ``create_date``. This
-        is the single policy reconciling the forward-path approximation kept here
-        with the conservative retro guard.
+        ``date`` is the Meta submission date when stored, otherwise the
+        create_date as an approximation for older leads. That fallback is only
+        used for previews: the retroactive rename skips leads without
+        meta_submitted_at when the template uses {date}.
         """
         self.ensure_one()
+        if self.meta_submitted_at:
+            day = fields.Date.to_string(self.meta_submitted_at.date())
+        elif self.create_date:
+            day = fields.Date.to_string(self.create_date.date())
+        else:
+            day = ''
         return {
             'form_name': self.meta_form_name or '',
             'campaign_name': self.meta_campaign_name or '',
@@ -74,11 +64,15 @@ class CrmLead(models.Model):
             'ad_name': self.meta_ad_name or '',
             'contact_name': self.contact_name or '',
             'page_name': self.meta_page_name or '',
-            'date': (fields.Date.to_string(self.create_date.date())
-                     if self.create_date else ''),
+            'date': day,
         }
 
-    # Raw Char id+name pairs — source of truth, no FK.
+    # Meta's created_time, in UTC. Differs from create_date for leads pulled
+    # in later by the cron or a retry.
+    meta_submitted_at = fields.Datetime(string='Meta Submitted On', copy=False,
+                                        index=True)
+
+    # Plain id/name pairs as Meta sent them; no foreign keys.
     meta_campaign_id = fields.Char(string='Meta Campaign ID')
     meta_campaign_name = fields.Char(string='Meta Campaign')
     meta_adset_id = fields.Char(string='Meta Ad Set ID')
@@ -90,16 +84,13 @@ class CrmLead(models.Model):
     meta_page_id = fields.Char(string='Meta Page ID')
     meta_page_name = fields.Char(string='Meta Page')
 
-    # Selection with room to extend (e.g. messenger) — not a free Char.
     meta_platform = fields.Selection(
         [('facebook', 'Facebook'), ('instagram', 'Instagram')],
         string='Meta Platform')
 
-    # Optional navigation m2o links. Must be nullable (a lead can arrive for a
-    # not-yet-discovered form/page) and ondelete='set null' so deleting a
-    # meta.page/form never deletes leads. These are populated by matching the
-    # raw Char ids elsewhere. The _ref suffix avoids colliding with the
-    # raw-Char meta_form_id / meta_page_id.
+    # Optional links to the synced records. Nullable because a lead can arrive
+    # before its form is synced; set null so deleting a page or form keeps the
+    # leads. The _ref suffix keeps them apart from the raw Char ids above.
     meta_form_id_ref = fields.Many2one('meta.lead.form', string='Meta Form',
                                        ondelete='set null')
     meta_page_id_ref = fields.Many2one('meta.page', string='Meta Page',
@@ -107,10 +98,11 @@ class CrmLead(models.Model):
     meta_account_id = fields.Many2one('meta.account', string='Meta Account',
                                       ondelete='set null')
 
-    # Lossless capture of unmapped form questions (one row each).
+    # Form answers that weren't mapped to a lead field, one row per question.
     answer_ids = fields.One2many('meta.lead.answer', 'lead_id',
                                  string='Meta Lead Answers')
 
+    # This constraint is what makes ingestion idempotent.
     _sql_constraints = [
         ('meta_leadgen_id_uniq', 'unique(meta_leadgen_id)',
          'A lead with this Meta Lead ID already exists.'),

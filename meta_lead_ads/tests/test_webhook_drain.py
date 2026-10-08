@@ -4,30 +4,11 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-"""Tests for the webhook queue: payload extraction + dedup, and the cron drain
-lifecycle including sibling isolation.
+"""Tests for the webhook event queue.
 
-Two TransactionCase classes live here:
-
-  * ``TestMetaWebhookExtract`` -- the model-level extraction + dedup contract,
-    calling ``meta.webhook.event._ingest_payload(data, raw=...)`` directly (no
-    HTTP). Covers the happy path, the edge cases (multi-entry / multi-changes /
-    missing value / missing leadgen_id / page_id fallback to entry.id) and the
-    guard ``test_unexpected_error_surfaces`` (a non-duplicate error in
-    _ingest_payload surfaces; only the IntegrityError unique-violation race is
-    swallowed).
-  * ``TestMetaWebhookDrain`` -- ``_cron_drain`` -> ``ingest_leadgen``
-    (mocked on the class). Covers success, transient retry-then-give-up
-    at MAX_ATTEMPTS=5 (+ no 6th attempt), permanent-fail-fast for both
-    MetaPermanentError and MetaAuthError, unknown-page, and per-event-savepoint
-    sibling isolation: one event's unexpected (non-typed) drain error must not
-    roll back a sibling's status write.
-
-Conventions used throughout:
-  - Patch ``ingest_leadgen`` / ``create`` on ``type(...)`` (the class), never a
-    recordset (``mock.patch.object`` is read-only on recordsets).
-  - Use ``search_count(...)``; ``search(count=)`` was removed in Odoo 18.
-  - ``assertRaises`` takes a single exception class, never a tuple.
+``TestMetaWebhookExtract`` calls ``_ingest_payload`` directly, without HTTP.
+``TestMetaWebhookDrain`` runs ``_cron_drain`` with ``ingest_leadgen`` patched
+on the class, since mock.patch.object can't patch a recordset.
 """
 from unittest import mock
 
@@ -36,12 +17,11 @@ from odoo.tests.common import TransactionCase, tagged
 from odoo.addons.meta_lead_ads.models.exceptions import (
     MetaTransientError, MetaPermanentError, MetaAuthError)
 
-MAX_ATTEMPTS = 5            # mirrors meta_webhook_event.MAX_ATTEMPTS (retry cap)
+MAX_ATTEMPTS = 5            # keep in step with meta_webhook_event.MAX_ATTEMPTS
 
 
 class WebhookDrainFixtureMixin:
-    """meta.account -> meta.page -> meta.lead.form chain (mirrors
-    test_ingest.IngestFixtureMixin) + the ingest class for class-patching."""
+    """Account, page and form fixtures, as in test_ingest."""
 
     def setUp(self):
         super().setUp()
@@ -59,15 +39,13 @@ class WebhookDrainFixtureMixin:
         })
         self.Event = self.env['meta.webhook.event']
         self.Ingest = self.env['meta.lead.ingest']
-        # Patch ingest_leadgen on the class, never a recordset.
         self.IngestClass = type(self.Ingest)
         self.Lead = self.env['crm.lead']
         self.Log = self.env['meta.sync.log']
 
     def _payload(self, leadgen_id='LG1', page_id='PG1', form_id='F1',
                  ad_id='AD1'):
-        """A verified Meta Page-leadgen envelope (object='page'; entry[].id ==
-        page_id; changes[].field=='leadgen')."""
+        """Return a Page leadgen webhook body shaped like Meta's."""
         return {
             'object': 'page',
             'entry': [{
@@ -84,22 +62,17 @@ class WebhookDrainFixtureMixin:
         }
 
     def _fake_lead(self):
-        """A real crm.lead so the success path can assert lead_id is set."""
+        """Create a real crm.lead for the mocked ingest to return."""
         return self.Lead.create({'name': 'WH Lead', 'type': 'lead'})
 
 
 @tagged('post_install', '-at_install')
 class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
-    """The model-level extraction + dedup contract. Calls ``_ingest_payload``
-    directly; asserts extraction, idempotent dedup on leadgen_id (global scope),
-    zero crm.lead, plus the edge cases and the non-duplicate-error-surfaces
-    guard."""
+    """Parsing webhook bodies into queue rows, deduplicated on leadgen_id."""
 
     def test_extract_and_dedup(self):
-        """Extract leadgen_id/page_id/form_id from entry[].changes[].value;
-        re-ingesting the same payload stays at one row (dedup on leadgen_id);
-        a non-'page' object and a non-'leadgen' field both create zero rows;
-        _ingest_payload creates zero crm.lead."""
+        """Leadgen changes are queued once each, other events are ignored, and
+        no crm.lead is created at this stage."""
         lead_before = self.Lead.search_count([])
         data = self._payload(leadgen_id='LG_X1')
         raw = b'{"object":"page"}'
@@ -109,16 +82,16 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
         evt = self.Event.search([('leadgen_id', '=', 'LG_X1')], limit=1)
         self.assertEqual(evt.page_id, 'PG1')
         self.assertEqual(evt.form_id, 'F1')
-        # dedup: a second identical payload does not create a 2nd row.
+        # Same payload again: still one row.
         self.Event._ingest_payload(data, raw=raw)
         self.assertEqual(
             self.Event.search_count([('leadgen_id', '=', 'LG_X1')]), 1)
-        # a non-'page' object -> ZERO rows.
+        # Non-page objects are ignored.
         before = self.Event.search_count([])
         self.Event._ingest_payload(
             {'object': 'user', 'entry': []}, raw=b'{}')
         self.assertEqual(self.Event.search_count([]), before)
-        # a non-'leadgen' field -> ZERO rows.
+        # So are page changes other than leadgen.
         self.Event._ingest_payload({
             'object': 'page',
             'entry': [{'id': 'PG1', 'changes': [
@@ -126,17 +99,11 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
             raw=b'{}')
         self.assertEqual(
             self.Event.search_count([('leadgen_id', '=', 'LG_FEED')]), 0)
-        # _ingest_payload never creates a crm.lead.
         self.assertEqual(self.Lead.search_count([]), lead_before)
 
     def test_extract_edge_cases(self):
-        """_ingest_payload handles, without crashing and without spurious rows:
-        (a) multiple entry[] -> one row per distinct leadgen_id;
-        (b) multiple changes[] in one entry -> one row per leadgen change;
-        (c) a leadgen change with no 'value' -> zero rows; (d) a value missing
-        leadgen_id -> zero rows; (e) value missing page_id -> page_id falls back
-        to entry.id."""
-        # (a) multiple entry[] elements, distinct leadgen ids.
+        """Odd but valid payload shapes are handled without crashing."""
+        # Several entries, one lead each.
         multi_entry = {
             'object': 'page',
             'entry': [
@@ -152,7 +119,7 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
             self.Event.search_count([('leadgen_id', '=', 'LG_A')]), 1)
         self.assertEqual(
             self.Event.search_count([('leadgen_id', '=', 'LG_B')]), 1)
-        # (b) multiple changes[] in one entry -> one row per leadgen change.
+        # Several changes in one entry.
         multi_change = {
             'object': 'page',
             'entry': [{'id': 'PG1', 'changes': [
@@ -165,7 +132,7 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
             self.Event.search_count([('leadgen_id', '=', 'LG_C')]), 1)
         self.assertEqual(
             self.Event.search_count([('leadgen_id', '=', 'LG_D')]), 1)
-        # (c) a leadgen change with no 'value' -> zero rows, no exception.
+        # A leadgen change with no value is skipped.
         before_c = self.Event.search_count([])
         self.Event._ingest_payload({
             'object': 'page',
@@ -173,7 +140,7 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
                 {'field': 'leadgen'},
                 {'field': 'leadgen', 'value': None}]}]}, raw=b'{}')
         self.assertEqual(self.Event.search_count([]), before_c)
-        # (d) a value missing leadgen_id -> zero rows.
+        # A value without leadgen_id is skipped.
         before_d = self.Event.search_count([])
         self.Event._ingest_payload({
             'object': 'page',
@@ -181,7 +148,7 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
                 {'field': 'leadgen', 'value': {'page_id': 'PG1'}}]}]},
             raw=b'{}')
         self.assertEqual(self.Event.search_count([]), before_d)
-        # (e) value missing page_id -> page_id falls back to entry.id.
+        # Without page_id in the value, the entry id is used.
         self.Event._ingest_payload({
             'object': 'page',
             'entry': [{'id': 'PG_FALLBACK', 'changes': [
@@ -191,11 +158,11 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
         self.assertEqual(evt.page_id, 'PG_FALLBACK')
 
     def test_unexpected_error_surfaces(self):
-        """A non-duplicate unexpected error inside _ingest_payload surfaces --
-        only the IntegrityError unique-violation race is absorbed by the dedup
-        savepoint; everything else propagates so a lead is never silently
-        dropped. Patch create on the class to raise a plain ValueError for a
-        fresh leadgen_id; assert it propagates."""
+        """Errors other than the duplicate-key race propagate.
+
+        Only the IntegrityError from a concurrent duplicate is swallowed;
+        anything else must surface so a lead is never lost silently.
+        """
         EventClass = type(self.Event)
         data = self._payload(leadgen_id='LG_BOOM')
         with mock.patch.object(EventClass, 'create',
@@ -206,8 +173,7 @@ class TestMetaWebhookExtract(WebhookDrainFixtureMixin, TransactionCase):
 
 @tagged('post_install', '-at_install')
 class TestMetaWebhookDrain(WebhookDrainFixtureMixin, TransactionCase):
-    """The cron drain lifecycle over ``ingest_leadgen`` (mocked on the
-    class)."""
+    """The queue drain cron: success, retries, failures and isolation."""
 
     def _queue(self, leadgen_id='LG1', page_id='PG1'):
         return self.Event.create({
@@ -215,8 +181,7 @@ class TestMetaWebhookDrain(WebhookDrainFixtureMixin, TransactionCase):
             'form_id': 'F1', 'status': 'pending'})
 
     def test_drain_success(self):
-        """A pending event drains: ingest_leadgen is called once with
-        (page, leadgen_id, trigger='webhook'); status -> 'done'; lead_id set."""
+        """A pending event is ingested once with trigger 'webhook' and done."""
         evt = self._queue(leadgen_id='LG_OK')
         fake = self._fake_lead()
         with mock.patch.object(self.IngestClass, 'ingest_leadgen',
@@ -231,10 +196,10 @@ class TestMetaWebhookDrain(WebhookDrainFixtureMixin, TransactionCase):
         self.assertEqual(kwargs.get('trigger'), 'webhook')
 
     def test_transient_retry_then_give_up(self):
-        """MetaTransientError keeps the row 'pending' + bumps attempts each
-        sweep; at attempts==MAX_ATTEMPTS (5) it flips to 'failed' + a
-        meta.sync.log 'failed' row; there is no 6th ingest attempt afterwards
-        (attempts caps at 5, ingest call count caps at 5)."""
+        """Transient errors retry up to MAX_ATTEMPTS, then the row fails.
+
+        Once failed, later sweeps leave it alone.
+        """
         evt = self._queue(leadgen_id='LG_TRANS')
         with mock.patch.object(self.IngestClass, 'ingest_leadgen',
                                side_effect=MetaTransientError('temp')) as m:
@@ -242,23 +207,20 @@ class TestMetaWebhookDrain(WebhookDrainFixtureMixin, TransactionCase):
                 self.Event._cron_drain()
                 self.assertEqual(evt.status, 'pending')
                 self.assertEqual(evt.attempts, sweep)
-            # the MAX_ATTEMPTS-th sweep gives up.
+            # Last allowed attempt: give up.
             self.Event._cron_drain()
             self.assertEqual(evt.status, 'failed')
             self.assertEqual(evt.attempts, MAX_ATTEMPTS)
             self.assertTrue(self.Log.search_count(
                 [('meta_leadgen_id', '=', 'LG_TRANS'),
                  ('status', '=', 'failed')]))
-            # no 6th attempt: a further sweep does not re-ingest a failed row.
+            # Another sweep must not pick up the failed row.
             self.Event._cron_drain()
         self.assertEqual(evt.attempts, MAX_ATTEMPTS)
         self.assertEqual(m.call_count, MAX_ATTEMPTS)
 
     def test_permanent_fails_fast(self):
-        """MetaPermanentError and MetaAuthError each fail immediately
-        (status='failed', attempts<=1, no retry) + a meta.sync.log 'failed' row.
-        Two distinct queue rows (one per error class) avoid shared-state
-        pollution."""
+        """Permanent and auth errors fail the row at once, without retrying."""
         evt_perm = self._queue(leadgen_id='LG_PERM')
         with mock.patch.object(self.IngestClass, 'ingest_leadgen',
                                side_effect=MetaPermanentError('perm')):
@@ -278,8 +240,7 @@ class TestMetaWebhookDrain(WebhookDrainFixtureMixin, TransactionCase):
             [('meta_leadgen_id', '=', 'LG_AUTH'), ('status', '=', 'failed')]))
 
     def test_unknown_page(self):
-        """A pending event whose page_id matches no meta.page -> 'failed' +
-        meta.sync.log row, no exception raised, ingest_leadgen never called."""
+        """An event for an unknown page fails without calling ingest."""
         evt = self._queue(leadgen_id='LG_NOPAGE', page_id='PG_UNKNOWN')
         with mock.patch.object(self.IngestClass, 'ingest_leadgen') as m:
             self.Event._cron_drain()
@@ -290,30 +251,26 @@ class TestMetaWebhookDrain(WebhookDrainFixtureMixin, TransactionCase):
              ('status', '=', 'failed')]))
 
     def test_drain_sibling_isolation(self):
-        """Two pending events drained in one sweep. Event A (FIFO-first)
-        succeeds -> 'done' (its status write survives); event B raises an
-        unexpected non-typed ValueError -> only B is marked 'failed' token-free
-        by the outer guard. B's per-event-savepoint rollback must not revert A's
-        status write. A meta.sync.log 'failed' row exists for B and none for
-        A."""
+        """An unexpected error on one event doesn't undo another's result.
+
+        Each event runs in its own savepoint, so rolling back B keeps A done.
+        """
         evt_a = self._queue(leadgen_id='LG_SIB_A')
         evt_b = self._queue(leadgen_id='LG_SIB_B')
-        # Ensure FIFO order A-before-B (the model _order is create_date asc).
+        # The drain is FIFO, so A is processed first.
         self.assertLess(evt_a.id, evt_b.id)
         fake = self._fake_lead()
 
         def _side_effect(page, leadgen_id, **kwargs):
             if leadgen_id == 'LG_SIB_B':
-                raise ValueError('unexpected')      # genuinely unexpected branch
+                raise ValueError('unexpected')
             return fake
 
         with mock.patch.object(self.IngestClass, 'ingest_leadgen',
                                side_effect=_side_effect):
             self.Event._cron_drain()
-        # A's write survived B's rollback (per-event savepoint isolation).
         self.assertEqual(evt_a.status, 'done')
         self.assertEqual(evt_a.lead_id, fake)
-        # B was isolated and failed token-free.
         self.assertEqual(evt_b.status, 'failed')
         self.assertTrue(self.Log.search_count(
             [('meta_leadgen_id', '=', 'LG_SIB_B'), ('status', '=', 'failed')]))

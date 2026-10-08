@@ -4,52 +4,32 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-"""RED security tests for the Leads Analytics Dashboard backend method.
+"""Security tests for ``meta.account.get_dashboard_metrics``.
 
-Pins the two security invariants of the not-yet-implemented
-``meta.account.get_dashboard_metrics`` :
-
-  (S1/S2 admin gate) A direct RPC-style call to ``get_dashboard_metrics`` as a
-      non-admin MUST raise ``AccessError`` -- proving the in-method
-      ``has_group('meta_lead_ads.group_meta_admin')`` gate is the real control,
-      not merely the menu ``groups=`` visibility. TWO non-admin variants are
-      asserted:
-        * variant 1: base.group_user + group_meta_user (a Meta User, NOT admin);
-        * variant 2: base.group_user only, NO meta groups at all.
-      ``base.group_user`` is MANDATORY on both -- without it Odoo sets
-      ``share=True`` (portal) and the gate would pass for the wrong reason
-      (test_promotion_security.py:16-19).
-
-  (S3 no-secret payload + allowlist) The admin-call return dict, recursively
-      flattened, contains NO ``access_token`` / ``app_secret`` / ``raw_payload``
-      keys and NO string value equal to a seeded secret (incl. health captions --
-      secret-value caption). Plus an explicit ALLOWLIST: every ``health`` signal dict has EXACTLY
-      {status, label, caption}; every ``sync_recent`` row dict has EXACTLY
-      {status, meta_leadgen_id, create_date}.
-
-RED now: the method does not exist (-> AttributeError). Turns GREEN in Plan 02.
-
-Odoo 18 conventions: @tagged('post_install','-at_install'); single-class
-assertRaises (never a tuple); search_count (no count=).
+- Non-admins calling the method directly get AccessError. The has_group
+  check inside the method is the real gate; the menu's groups= only hides the
+  menu. Both test users have base.group_user, otherwise Odoo makes them share
+  (portal) users and the call would fail for the wrong reason.
+- The payload never carries access_token, app_secret or raw_payload keys, or
+  any seeded secret value. Health signals and sync_recent rows are limited to
+  a fixed set of keys.
 """
 from odoo.tests.common import TransactionCase, tagged
 from odoo.exceptions import AccessError
 
 from .test_dashboard_metrics import DashboardFixtureMixin
 
-# The secret values seeded by IngestFixtureMixin.setUp (account app_secret /
-# access_token + page access_token) -- none of these may appear in the payload.
+# Secrets seeded by IngestFixtureMixin.setUp; none may appear in the payload.
 SEEDED_SECRETS = ('secret_test', 'tok_acct', 'tok_test', 'app_test')
 
-# Allowlisted key sets: the dashboard payload must not widen
-# these shapes to expose extra (potentially sensitive) fields.
+# The only keys allowed in health signals and sync_recent rows.
 HEALTH_SIGNAL_KEYS = {'status', 'label', 'caption'}
 SYNC_RECENT_KEYS = {'status', 'meta_leadgen_id', 'create_date'}
 
 
 def _flatten(obj):
-    """Yield (key, value) for every dict key and every scalar value reachable in
-    a nested dict/list payload, so the secret scan misses nothing."""
+    """Yield ('key', k) and ('value', v) for everything in a nested
+    dict/list payload."""
     if isinstance(obj, dict):
         for k, v in obj.items():
             yield ('key', k)
@@ -63,46 +43,40 @@ def _flatten(obj):
 
 @tagged('post_install', '-at_install')
 class TestDashboardSecurity(DashboardFixtureMixin, TransactionCase):
-    """Admin-gate (two non-admin variants) + no-secret-payload + health/
-    sync_recent allowlist. Fails RED until Plan 02 implements the method."""
+    """Admin gate and payload contents of the dashboard method."""
 
     def setUp(self):
         super().setUp()
         base_internal = self.env.ref('base.group_user')
         user_group = self.env.ref('meta_lead_ads.group_meta_user')
-        # Variant 1: a Meta User (base.group_user + group_meta_user), NOT admin.
+        # A Meta User, not an admin.
         self.non_admin_user = self.env['res.users'].create({
             'name': 'Dash NonAdmin', 'login': 'dash_nonadmin',
             'groups_id': [(6, 0, [base_internal.id, user_group.id])]})
-        # Variant 2: an internal user with base.group_user ONLY, no meta groups.
+        # An internal user with no Meta groups at all.
         self.plain_internal = self.env['res.users'].create({
             'name': 'Dash Plain', 'login': 'dash_plain',
             'groups_id': [(6, 0, [base_internal.id])]})
 
-    # ---- S1/S2: in-method has_group gate, two non-admin variants ----------
+    # ---- admin gate --------------------------------------------------------
 
     def test_meta_user_non_admin_call_raises(self):
-        """A Meta User (group_meta_user, NOT group_meta_admin) calling
-        get_dashboard_metrics directly raises AccessError -- the RPC cannot bypass
-        the menu groups=. Single-class assertRaises, NO tuple."""
+        """A Meta User calling the method over RPC gets AccessError."""
         with self.assertRaises(AccessError):
             self.Account.with_user(
                 self.non_admin_user).get_dashboard_metrics()
 
     def test_plain_internal_non_admin_call_raises(self):
-        """An internal user with NO meta groups at all calling
-        get_dashboard_metrics directly raises AccessError -- proving the backend
-        has_group gate is the real control, not menu visibility."""
+        """An internal user with no Meta groups gets AccessError."""
         with self.assertRaises(AccessError):
             self.Account.with_user(
                 self.plain_internal).get_dashboard_metrics()
 
-    # ---- S3: no-secret payload (recursive flatten incl. health captions) --
+    # ---- no secrets in the payload ------------------------------------------
 
     def test_admin_payload_has_no_secret_keys_or_values(self):
-        """The admin-call payload contains NO access_token / app_secret /
-        raw_payload key and NO string value equal to a seeded secret token /
-        app-secret (recursively, incl. any health caption)."""
+        """No secret key names and no seeded secret values anywhere in the
+        payload, health captions included."""
         self._seed_window()
         m = self._metrics(period_mode='month',
                           date_from=self.win_from, date_to=self.win_to)
@@ -115,11 +89,10 @@ class TestDashboardSecurity(DashboardFixtureMixin, TransactionCase):
             for val in values:
                 self.assertNotIn(secret, val)
 
-    # ---- S3: explicit allowlist on health + sync_recent -------------------
+    # ---- key allowlists --------------------------------------------------------
 
     def test_health_signal_keys_are_allowlisted(self):
-        """Every health signal dict exposes EXACTLY {status, label, caption} --
-        no extra keys that could leak token/expiry/account metadata."""
+        """Each health signal has exactly status, label and caption."""
         self._seed_window()
         m = self._metrics(period_mode='month',
                           date_from=self.win_from, date_to=self.win_to)
@@ -131,9 +104,8 @@ class TestDashboardSecurity(DashboardFixtureMixin, TransactionCase):
                 % (signal_name, set(signal.keys()), HEALTH_SIGNAL_KEYS))
 
     def test_sync_recent_row_keys_are_allowlisted(self):
-        """Every sync_recent row exposes EXACTLY
-        {status, meta_leadgen_id, create_date} -- never raw_payload or any other
-        field."""
+        """Each sync_recent row has exactly status, meta_leadgen_id and
+        create_date."""
         self._seed_window()
         m = self._metrics(period_mode='month',
                           date_from=self.win_from, date_to=self.win_to)

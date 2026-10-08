@@ -4,22 +4,18 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-# Single idempotent ingestion service — the core of the integration.
-# Load-bearing rules: one create surface, idempotency via a DB UNIQUE
-# constraint (not a Python search), two-layer dedup, lossless capture (no
-# ir.model.fields creation in the hot path), and UTM get-or-create.
-#
-# This AbstractModel's ``ingest_leadgen`` is the only code path that turns a
-# (page, leadgen_id) into a crm.lead from Meta data. The webhook, the cron and
-# the manual wizard are all thin wrappers over this stable signature.
+# Lead ingestion service. ``ingest_leadgen`` is the only code path that creates
+# a crm.lead from Meta data; the webhook, the cron and the manual wizard all
+# call it. Idempotency comes from the UNIQUE constraint on meta_leadgen_id,
+# not from a Python search, because those callers can race each other.
 import logging
 import re
-from datetime import date
+from datetime import date, datetime, timezone
 
 from psycopg2 import IntegrityError
 
-from odoo import _, api, fields, models
-from odoo.exceptions import ValidationError
+from odoo import _, api, fields, models, Command
+from odoo.exceptions import AccessError, ValidationError
 
 from .const import (
     DEFAULT_LEAD_NAME, LEAD_NAME_PARAM, VALID_TOKENS,
@@ -29,9 +25,8 @@ from .const import (
 from .exceptions import (MetaAuthError, MetaPermanentError,
                          MetaRateLimitError, MetaTransientError)
 
-# Built-in canonical Meta keys, always on. A form with zero meta.field.mapping
-# rows still maps out of the box; full_name is the person (contact_name), never
-# the subject line.
+# Standard Meta keys, always mapped, so a form with no mapping rows still works.
+# full_name is the contact person, not the lead title.
 CANONICAL = {
     'full_name': 'contact_name',
     'email': 'email_from',
@@ -41,28 +36,57 @@ CANONICAL = {
 
 _logger = logging.getLogger(__name__)
 
-# Meta lead payload 'platform' -> crm.lead.meta_platform Selection.
+# Meta's 'platform' value -> crm.lead.meta_platform selection key.
 _PLATFORM = {'fb': 'facebook', 'facebook': 'facebook',
              'ig': 'instagram', 'instagram': 'instagram'}
 
-# Meta object ids are digits/letters/_/- only. Reject anything else (empty,
-# whitespace, '/'- or '?'-bearing) before any DB/Graph call — defense-in-depth
-# on top of _request's '://'/'?' path guard.
+# Meta object ids are letters, digits, '_' and '-'. Anything else is rejected
+# before we touch the DB or build a Graph URL with it.
 _LEADGEN_RE = re.compile(r'^[A-Za-z0-9_-]+$')
 
-# Lead-name template tokenizers (local private compiled regexes — a compiled
-# regex stays in the file that uses it; the constants it checks against are the
-# PUBLIC ones imported from .const).
-#   _TOKEN_RE  — matches a well-formed {\w+} token; render substitutes ONLY
-#                these. A malformed brace body stays literal at render time
-#                (render never validates, never raises).
-#   _BRACE_RE  — matches ANY single-brace body ([^{}]*) so the validator can
-#                reject brace bodies that are not a known \w+ token (unknown
-#                tokens AND malformed bodies like {foo-bar}/{}/{form bar}).
-#                Doubled braces {{...}} are NOT matched as a single-brace body
-#                (the inner content carries braces) → escaped literal, no raise.
+# _TOKEN_RE finds well-formed {word} tokens; rendering substitutes only these
+# and leaves any other brace text as-is.
+# _BRACE_RE finds any single-brace body so the validator can reject unknown
+# tokens and malformed ones like {foo-bar} or {}.
 _TOKEN_RE = re.compile(r'\{(\w+)\}')
 _BRACE_RE = re.compile(r'\{([^{}]*)\}')
+
+# Strict parsers for typed mappings. An answer that doesn't parse cleanly is
+# kept as a meta.lead.answer row instead of being guessed ("$5k" is not 5).
+_TRUE_WORDS = frozenset({'true', 'yes', 'y', '1', 'on', 'checked'})
+_FALSE_WORDS = frozenset({'false', 'no', 'n', '0', 'off', 'unchecked'})
+# Plain or comma-grouped number, optionally with a currency symbol or ISO code.
+_NUMBER_RE = re.compile(
+    r'^(?:[A-Za-z]{3}\s*)?[$€£¥₹]?\s*'
+    r'([-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)'
+    r'\s*(?:[A-Za-z]{3})?$')
+_PG_INT_MAX = 2 ** 31 - 1
+
+
+def parse_meta_time(raw):
+    """Parse a Meta ``created_time`` or ISO 8601 string into a naive UTC datetime.
+
+    Returns ``None`` for empty or unparseable input instead of raising, so a
+    bad timestamp never drops a lead."""
+    if not raw or not isinstance(raw, str):
+        return None
+    raw = raw.strip()
+    parsed = None
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        # Meta sends "+0000"; Python < 3.11 can't parse that offset.
+        for fmt in ('%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S.%f%z'):
+            try:
+                parsed = datetime.strptime(raw, fmt)
+                break
+            except ValueError:
+                continue
+    if parsed is None:
+        return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
 
 
 class MetaLeadIngest(models.AbstractModel):
@@ -70,33 +94,19 @@ class MetaLeadIngest(models.AbstractModel):
     _description = 'Meta Lead idempotent ingestion service'
 
     # ------------------------------------------------------------------ #
-    # Lead-name composition (shared by the create path, the Settings preview
-    # and the retro-rename — one place that renders titles for all of them).
+    # Lead titles (used by the create path, the Settings preview and the
+    # retroactive rename).
     # ------------------------------------------------------------------ #
     @api.model
     def _validate_lead_name_template(self, template):
-        """Raise ``ValidationError`` if ``template`` references an unknown or
-        malformed token; return ``None`` when every braced body is a legal
-        ``VALID_TOKENS`` member.
+        """Raise ``ValidationError`` if the template has an unknown or malformed token.
 
-        Validation runs at the Settings WRITE boundary only
-        (``set_values``) — it is the strict gate. The create path NEVER calls
-        this (it renders defensively so a junk param can never drop a paid
-        lead).
-
-        Policy:
-          - a single-brace body that is not a ``VALID_TOKENS`` member is bad —
-            this rejects both unknown ``\\w+`` tokens (``{foo}``) AND malformed
-            bodies (``{foo-bar}``, ``{}``, ``{form bar}``);
-          - doubled braces ``{{literal}}`` are an escaped literal: ``_BRACE_RE``
-            (``[^{}]*``) never matches them as a single-brace body, so they are
-            passed through without raising.
+        Only called when Settings are saved. The create path never validates,
+        so a bad stored value can't block a lead. Doubled braces ``{{text}}``
+        are an escaped literal and pass.
         """
-        # Escaped braces ``{{`` / ``}}`` are literals (str.format semantics).
-        # Strip them BEFORE scanning: otherwise ``_BRACE_RE`` slides to the inner
-        # ``{literal}`` brace pair inside ``{{literal}}`` and wrongly rejects it
-        # (the escaped literal must pass). Single ``{token}`` bodies are
-        # untouched by this strip.
+        # Drop escaped braces first, otherwise _BRACE_RE would match the inner
+        # {text} of {{text}} and reject it.
         scan = (template or '').replace('{{', '').replace('}}', '')
         bad = [body for body in _BRACE_RE.findall(scan)
                if body not in VALID_TOKENS]
@@ -111,30 +121,21 @@ class MetaLeadIngest(models.AbstractModel):
 
     @api.model
     def render_lead_name(self, template, token_map):
-        """Render ``template`` against ``token_map`` → the lead title.
+        """Render the lead title from ``template`` and ``token_map``.
 
-        Contract:
-          - only well-formed ``{\\w+}`` tokens are substituted; a malformed
-            brace stays literal (render NEVER validates, NEVER raises);
-          - a token resolving empty vanishes AND consumes one adjacent
-            separator run (the dangling separator), so ``A • {x} • B`` with an
-            empty ``x`` collapses to ``A • B``, while a real non-separator
-            literal (``"Lead from "``) is preserved;
-          - the final tidy only trims dangling separators at the empty-token
-            seams and edge whitespace — it does NOT globally collapse
-            separators, so a VALUE that itself contains ``" • "`` survives
-            verbatim;
-          - the result is NEVER empty: an all-empty render falls back to the
-            byte-exact default subject ``"Meta Lead"``.
+        Never raises and never returns an empty string (falls back to
+        "Meta Lead"). Only well-formed ``{\\w+}`` tokens are replaced. An empty
+        token disappears together with one neighbouring separator, so
+        "A / {x} / B" with x empty becomes "A / B", while real text such as
+        "Lead from " is kept. Separators inside a value are left alone.
 
-        ``str.format`` is deliberately NOT used: it raises ``KeyError`` on an
-        unknown key and leaves empty-token gaps (Don't-Hand-Roll).
+        ``str.format`` isn't used because it raises on unknown keys and leaves
+        gaps for empty values.
         """
         template = template or DEFAULT_LEAD_NAME
         token_map = token_map or {}
 
-        # pieces: ordered list of ('lit', text) / ('val', text). Build by
-        # walking the well-formed tokens; the gaps between matches are literals.
+        # Ordered ('lit', text) / ('val', text) pieces.
         pieces = []
         trim_next_lit_lead = False
         pos = 0
@@ -142,16 +143,16 @@ class MetaLeadIngest(models.AbstractModel):
         def _emit_lit(text):
             nonlocal trim_next_lit_lead
             if trim_next_lit_lead:
-                # An empty token just before this literal had no preceding
-                # separator to eat → drop this literal's LEADING separator run.
+                # The empty token before us had no separator to eat on its
+                # left, so eat the one at the start of this literal.
                 text = re.sub(r'^[^\w]+', '', text)
                 trim_next_lit_lead = False
             pieces.append(('lit', text))
 
         def _emit_empty_token():
             nonlocal trim_next_lit_lead
-            # Prefer eating the preceding literal's TRAILING separator run;
-            # if there is none, mark the next literal's leading run for removal.
+            # Eat the trailing separator of the previous literal if there is
+            # one; otherwise eat the leading separator of the next literal.
             if pieces and pieces[-1][0] == 'lit':
                 stripped = re.sub(r'[^\w]+$', '', pieces[-1][1])
                 if stripped != pieces[-1][1]:
@@ -173,79 +174,54 @@ class MetaLeadIngest(models.AbstractModel):
         return result or _("Meta Lead")
 
     # ------------------------------------------------------------------ #
-    # Public entry point — the single create surface.
+    # Entry point
     # ------------------------------------------------------------------ #
     @api.model
     def ingest_leadgen(self, page, leadgen_id, trigger='webhook', raw=None):
-        """Turn a (page, leadgen_id) into a crm.lead idempotently.
+        """Create or link the crm.lead for a Meta leadgen id, idempotently.
 
-        ``page`` is a ``meta.page`` recordset (carries ``access_token`` and
-        ``account_id.app_secret``). Returns the created / linked / pre-existing
-        ``crm.lead``. This is the only place a crm.lead is created from Meta
-        data; the webhook, the cron and the manual wizard all wrap this method.
+        ``page`` is a ``meta.page`` record (token and app secret come from it).
+        Returns the new, matched or already-existing lead.
 
-        Fixed pipeline:
-          0. validate leadgen_id
-          1. idempotency pre-check (no re-fetch on a known id)
-          2. Graph fetch (typed-exception -> 'failed' log + re-raise)
-          3. attribution resolve (payload-first, resolve_name only on miss)
-          4. field mapping (canonical wins over per-form override)
-          5. two-layer business dedup + guarded leadgen stamp
-          5a. MATCH path  — enrich-blank-only + append answers + stamp id
-          5b. CREATE path — the sole create (savepoint + flush + IntegrityError)
-          6. UTM get-or-create
+        Steps: validate the id, return early if it is already known, fetch the
+        lead from Graph, resolve attribution, map fields, then either enrich an
+        open lead found by email/phone or create a new one, and set UTM.
         """
         leadgen_id = self._validate_leadgen_id(leadgen_id)
 
         Lead = self.env['crm.lead']
         Log = self.env['meta.sync.log']
 
-        # STEP 1 — idempotency pre-check. Named seam so concurrency tests can
-        # drive the create path while the row already exists.
+        # Already ingested: don't fetch again.
         existing = self._find_by_leadgen_id(leadgen_id)
         if existing:
             Log._record(leadgen_id, trigger, 'skipped_idempotent',
                         lead=existing, raw=raw)
             return existing
 
-        # STEP 2 — Graph fetch. Typed Graph errors -> 'failed' log + re-raise.
-        # Known limitation (accepted): the 'failed' row is written then the
-        # exception is re-raised; if the caller's transaction rolls back
-        # (webhook/cron) this log row rolls back with it. Durable failure
-        # logging / retry is owned by those callers — do not add a manual cursor
-        # commit here.
+        # The 'failed' log row is written in the caller's transaction, so it is
+        # rolled back with it if the caller rolls back. Retries and durable
+        # failure logging belong to the webhook/cron; don't commit here.
         try:
             data = self.env['meta.graph.client'].fetch_lead(page, leadgen_id)
         except (MetaAuthError, MetaPermanentError,
                 MetaRateLimitError, MetaTransientError) as e:
-            # Pre-fetch failure case — this row has no lead and no raw_payload,
-            # so a later manual retry has nothing to navigate from. Stamp the
-            # owning `page` (the method's first arg, in scope here) so
-            # _resolve_page can re-fetch from Graph by leadgen_id. The
-            # lead-bearing rows resolve via lead_id and do not pass page=.
+            # No lead and no payload yet, so store the page: a manual retry
+            # needs it to re-fetch by leadgen_id.
             Log._record(leadgen_id, trigger, 'failed',
                         match_key='none', error=str(e), page=page)
             raise
 
-        # STEP 3 — ATTRIBUTION (payload-first; resolve_name only for missing).
         attribution = self._resolve_attribution(page, data)
 
-        # STEP 4 — field map (canonical-wins merge; lossless unmapped capture).
         vals, answers, description_block = self._map_fields(page, data)
 
-        # STEP 5 — business dedup (email->phone) + guarded leadgen stamp.
         match, match_key = self._find_dedup_match(Lead, vals)
-        # meta_leadgen_id is a single-valued DB-UNIQUE key — a crm.lead carries
-        # at most one leadgen_id.
-        #   * match already carries the SAME leadgen_id -> cannot happen past
-        #     the Step-1 pre-check; on a race, treat as skipped_idempotent.
-        #   * match already carries a DIFFERENT leadgen_id -> do not overwrite,
-        #     do not merge. Discard the match so we fall through to the create
-        #     path (5b) and spawn a new lead stamped with this leadgen_id, like
-        #     a closed-lead non-match. The old lead is left untouched, so both
-        #     leadgen_ids stay independently idempotent. Overwriting would
-        #     silently destroy the first submission's idempotency identity
-        #     (re-process + re-append answers on the next re-send / cron sweep).
+        # A lead holds one leadgen_id at most. If the match already has this id
+        # we lost a race: treat it as a duplicate. If it has a different id,
+        # leave it alone and create a new lead; overwriting would break the
+        # first submission's idempotency and re-append its answers on the next
+        # re-send.
         if match and match.meta_leadgen_id and match.meta_leadgen_id == leadgen_id:
             Log._record(leadgen_id, trigger, 'skipped_idempotent',
                         lead=match, raw=raw)
@@ -254,58 +230,52 @@ class MetaLeadIngest(models.AbstractModel):
             match = Lead.browse()   # already Meta-claimed by a different id
             match_key = None
 
-        # STEP 5a — match path (only a usable, un-stamped match reaches here).
         if match:
             return self._enrich_match(
                 Lead, Log, match, match_key, leadgen_id, trigger,
                 vals, attribution, answers, description_block, data, raw)
 
-        # STEP 5b — create path (sole create; also the different-id discard,
-        # with match_key='none'). Contact-less leads reach here too and are
-        # created with status='success' — never dropped.
+        # Leads with no email or phone are created too; they are never dropped.
         return self._create_lead(
             Lead, Log, leadgen_id, trigger, vals, attribution,
             answers, description_block, data, raw)
 
     # ------------------------------------------------------------------ #
-    # STEP 0 — input guard.
+    # Input check
     # ------------------------------------------------------------------ #
     @api.model
     def _validate_leadgen_id(self, leadgen_id):
-        """Reject empty / whitespace-only / path-or-query-bearing ids before any
-        DB search or Graph call. Returns the cleaned (stripped) id."""
+        """Return the stripped leadgen id, or raise if it is empty or not a plain id."""
         lg = (leadgen_id or '').strip()
         if not lg or not _LEADGEN_RE.match(lg):
             raise MetaPermanentError("Invalid leadgen_id: %r" % (leadgen_id,))
         return lg
 
     # ------------------------------------------------------------------ #
-    # STEP 1 — idempotency pre-check seam (patched by the concurrency test).
+    # Idempotency lookup
     # ------------------------------------------------------------------ #
     @api.model
     def _find_by_leadgen_id(self, leadgen_id):
-        """The Step-1 idempotency seam — relies on the DB UNIQUE constraint, not
-        a Python search of business fields. Returns the crm.lead already carrying
-        ``leadgen_id`` or an empty recordset. Kept as an explicit named method so
-        the service-path concurrency test can patch it to empty once and drive
-        the create/flush path even though the row already exists."""
+        """Return the lead already carrying ``leadgen_id``, or an empty recordset.
+
+        This is only a shortcut; the UNIQUE constraint is what actually
+        prevents duplicates. Kept as its own method so the concurrency test
+        can patch it and force the create path."""
         return self.env['crm.lead'].search(
             [('meta_leadgen_id', '=', leadgen_id)], limit=1)
 
     # ------------------------------------------------------------------ #
-    # STEP 3 — attribution (payload-first, resolve_name only for misses).
+    # Attribution
     # ------------------------------------------------------------------ #
     @api.model
     def _resolve_attribution(self, page, data):
-        """Build the meta_* attribution vals from the payload. Prefer the
-        payload ``*_name``; resolve only the missing names via
-        meta.graph.client.resolve_name (payload-first / cache-on-miss: zero
-        per-lead Graph calls when the payload carries the name; exactly one
-        resolve per missing name)."""
+        """Build the meta_* attribution values for the lead.
+
+        Names come from the payload when present; only missing ones are looked
+        up through the name cache, one Graph call per missing name at most."""
         Graph = self.env['meta.graph.client']
         token = page.access_token
-        # Send the appsecret_proof on cache-miss name lookups too (mirrors
-        # fetch_lead), so resolution still works when the app requires it.
+        # Name lookups need the appsecret_proof too when the app enforces it.
         app_secret = page.account_id.app_secret
 
         campaign_name = self._resolve_one(
@@ -320,11 +290,8 @@ class MetaLeadIngest(models.AbstractModel):
             Graph, token, 'ad',
             data.get('ad_id'), data.get('ad_name'),
             app_secret=app_secret)
-        # Resolve the local meta.lead.form once (reused for the m2o ref below).
-        # Form-name precedence: payload form_name -> already-synced local form
-        # name (zero Graph traffic) -> cache-on-miss Graph resolve as a last
-        # resort. The form is synced at onboarding, so a known form costs no
-        # per-lead Graph call.
+        # Form name: payload first, then the locally synced form (no Graph
+        # call), then a Graph lookup as a last resort.
         form = self._resolve_form(page, data.get('form_id'))
         form_name = self._resolve_one(
             Graph, token, 'form',
@@ -344,11 +311,12 @@ class MetaLeadIngest(models.AbstractModel):
             'meta_form_name': form_name or False,
             'meta_page_id': page.page_id or False,
             'meta_page_name': page.name or False,
+            'meta_submitted_at': parse_meta_time(data.get('created_time'))
+            or False,
         }
         if platform:
             attribution['meta_platform'] = platform
-        # Optional m2o navigation refs (best-effort; nullable by design).
-        # `form` was already resolved above for the form-name fallback.
+        # Optional links; the form may not be synced yet.
         if form:
             attribution['meta_form_id_ref'] = form.id
         attribution['meta_page_id_ref'] = page.id
@@ -359,10 +327,7 @@ class MetaLeadIngest(models.AbstractModel):
     @api.model
     def _resolve_one(self, Graph, token, object_type, graph_id, payload_name,
                      app_secret=None):
-        """resolve_name wrapper: returns the payload name verbatim (zero Graph
-        traffic) when present; otherwise resolves via the cache-on-miss
-        resolve_name ONLY when there is an id to resolve. ``app_secret`` is
-        threaded through so the cache-miss lookup sends the appsecret_proof."""
+        """Return ``payload_name`` if set, else look the name up by id (False if no id)."""
         if payload_name:
             return payload_name
         if not graph_id:
@@ -373,35 +338,35 @@ class MetaLeadIngest(models.AbstractModel):
 
     @api.model
     def _resolve_form(self, page, form_id):
-        """Best-effort meta.lead.form lookup for the form name + override map."""
+        """Return the synced meta.lead.form for this page and form id, if any."""
         if not form_id:
             return self.env['meta.lead.form']
         return self.env['meta.lead.form'].search(
             [('form_id', '=', form_id), ('page_id', '=', page.id)], limit=1)
 
     # ------------------------------------------------------------------ #
-    # STEP 4 — field mapping (canonical wins over per-form override).
+    # Field mapping
     # ------------------------------------------------------------------ #
     @api.model
     def _map_fields(self, page, data):
-        """Map field_data to crm.lead vals + capture unmapped questions.
+        """Map Meta field_data to crm.lead values and collect unmapped answers.
 
-        Always-on semantics: the per-form override map may add new Meta keys but
-        must not remap a canonical key. We seed from overrides then let CANONICAL
-        clobber any override that targets a canonical Meta key.
+        Per-form mappings can add keys but can't remap the CANONICAL ones.
+        Each answer is converted to its target field type; if conversion fails
+        the answer is kept as an unmapped answer rather than written badly.
 
-        Lossless capture: Meta field_data[].values is an array. The crm field and
-        the meta.lead.answer.value / description use the deterministic
-        ", ".join(...) display string. The full untruncated field_data array is
-        preserved losslessly in meta.sync.log.raw_payload (set via
-        _record(..., raw=data)), which is the authoritative copy — the join is a
-        display convenience, never the only copy.
+        Multi-value answers are joined with ", " for display. The full
+        field_data array is stored in meta.sync.log.raw_payload, which is the
+        authoritative copy.
+
+        Returns ``(vals, answers, description_block)``.
         """
         form = self._resolve_form(page, data.get('form_id'))
         overrides = {m.meta_key: m.crm_field_id.name
                      for m in form.mapping_ids} if form else {}
         merged = dict(overrides)
         merged.update(CANONICAL)   # canonical keys clobber same-key overrides
+        lead_fields = self.env['crm.lead']._fields
 
         vals = {}
         answers = []
@@ -409,33 +374,138 @@ class MetaLeadIngest(models.AbstractModel):
         for entry in data.get('field_data', []):
             name = entry.get('name')
             if not name:
-                # Malformed entry with no question key: nothing to map and
-                # nothing to key a required meta.lead.answer row on. Skip it
-                # rather than crash the whole ingest (never drop a paid lead).
-                # The full entry is still preserved losslessly in
-                # meta.sync.log.raw_payload, the authoritative copy.
+                # No question key to map or store it under. Skip the entry
+                # rather than fail the lead; raw_payload still has it.
                 continue
             values = entry.get('values') or []
             display = ", ".join(str(v) for v in values)
             target = merged.get(name)
-            if target:
-                vals[target] = display
-            else:
-                answers.append({'question_key': name, 'label': name,
-                                'value': display})
-                qa_lines.append("%s: %s" % (name, display))
+            field = lead_fields.get(target) if target else None
+            if field:
+                ok, value = self._coerce_answer(field, values, display)
+                if ok:
+                    vals[target] = value
+                    continue
+                # Log the key and target only; the answer itself is PII.
+                _logger.info(
+                    "meta_lead_ads: answer for question %r could not be "
+                    "converted to crm.lead.%s (%s); kept as a Meta answer",
+                    name, target, field.type)
+            answers.append({'question_key': name, 'label': name,
+                            'value': display})
+            qa_lines.append("%s: %s" % (name, display))
         description_block = (
             "── Meta Lead Ad submission ──\n" + "\n".join(qa_lines)
         ) if qa_lines else ""
         return vals, answers, description_block
 
+    @api.model
+    def _coerce_answer(self, field, values, display):
+        """Convert one Meta answer to a value for crm.lead ``field``.
+
+        Returns ``(True, value)`` on success or ``(False, None)``, in which
+        case the caller keeps the answer as a meta.lead.answer row.
+
+        char/text take the joined string. selection matches an option key or
+        label, case-insensitive. boolean takes yes/no style words. Numbers may
+        be comma-grouped with a currency symbol or code; an integer field
+        refuses fractions and out-of-range values instead of truncating.
+        Dates take ISO 8601 or MM/DD/YYYY. many2one needs exactly one matching
+        record, many2many one match per value.
+        """
+        ftype = field.type
+        if ftype in ('char', 'text'):
+            return True, display
+        clean = [str(v).strip() for v in values
+                 if v is not None and str(v).strip()]
+        if not clean:
+            return False, None
+        if ftype == 'many2many':
+            ids = []
+            for value in clean:
+                rec = self._match_record(field.comodel_name, value)
+                if not rec:
+                    return False, None
+                ids.append(rec.id)
+            return True, [Command.set(ids)]
+        if len(clean) != 1:
+            return False, None
+        raw = clean[0]
+        if ftype == 'selection':
+            wanted = raw.lower()
+            for key, label in field._description_selection(self.env):
+                if wanted in (str(key).lower(), str(label).strip().lower()):
+                    return True, key
+            return False, None
+        if ftype == 'boolean':
+            word = raw.lower()
+            if word in _TRUE_WORDS:
+                return True, True
+            if word in _FALSE_WORDS:
+                return True, False
+            return False, None
+        if ftype in ('integer', 'float', 'monetary'):
+            match = _NUMBER_RE.match(raw)
+            if not match:
+                return False, None
+            number = float(match.group(1).replace(',', ''))
+            if ftype == 'integer':
+                if number != int(number) or abs(number) > _PG_INT_MAX:
+                    return False, None
+                return True, int(number)
+            return True, number
+        if ftype in ('date', 'datetime'):
+            moment = parse_meta_time(raw)
+            if moment is None:
+                try:
+                    moment = datetime.strptime(raw, '%m/%d/%Y')
+                except ValueError:
+                    return False, None
+            return True, (moment.date() if ftype == 'date' else moment)
+        if ftype == 'many2one':
+            rec = self._match_record(field.comodel_name, raw)
+            return (True, rec.id) if rec else (False, None)
+        return False, None
+
+    @api.model
+    def _match_record(self, model_name, value):
+        """Return the one record whose name, or failing that ``code``, equals ``value``.
+
+        Case-insensitive. Returns an empty recordset when nothing matches,
+        more than one record matches, or the user can't read the model. Never
+        creates records."""
+        Model = self.env[model_name]
+        # =ilike treats % and _ as wildcards; escape them for an exact match.
+        pattern = (value.replace('\\', '\\\\')
+                   .replace('%', '\\%').replace('_', '\\_'))
+        rec_name = Model._rec_name or 'name'
+        for fname in (rec_name, 'code'):
+            field = Model._fields.get(fname)
+            if field is None:
+                continue
+            # Odoo truncates the search value to a sized Char's length, so
+            # "Atlantis" on res.country.code (size 2) would search "At" and hit
+            # Austria. A longer value can't match anyway, so skip.
+            if getattr(field, 'size', None) and len(value) > field.size:
+                continue
+            try:
+                found = Model.search([(fname, '=ilike', pattern)], limit=2)
+            except (AccessError, ValueError):
+                return Model.browse()
+            if len(found) == 1:
+                return found
+            if found:
+                return Model.browse()   # ambiguous, don't guess
+        return Model.browse()
+
     # ------------------------------------------------------------------ #
-    # STEP 5 — business dedup candidate search (email -> normalized phone).
+    # Business dedup (email, then phone)
     # ------------------------------------------------------------------ #
     @api.model
     def _find_dedup_match(self, Lead, vals):
-        """Find an open (active + not won) crm.lead by email (=ilike) then
-        normalized phone. Returns (match_recordset, match_key)."""
+        """Find an open lead (active, not won) by email, then by normalized phone.
+
+        Returns ``(lead, match_key)``."""
         match = Lead.browse()
         match_key = None
         if vals.get('email_from'):
@@ -446,10 +516,8 @@ class MetaLeadIngest(models.AbstractModel):
         if not match and vals.get('phone'):
             norm = self._normalize_phone(vals['phone'])
             if norm:
-                # Indexed SQL '=' on the stored normalized column:
-                # crm.lead.meta_phone_normalized is computed by the same
-                # _normalize_phone, so the stored value matches this lookup key.
-                # No more loading every open phone-bearing lead into memory.
+                # meta_phone_normalized is computed with the same
+                # _normalize_phone, so an indexed '=' lookup is enough.
                 match = Lead.search([('meta_phone_normalized', '=', norm),
                                      ('active', '=', True),
                                      ('stage_id.is_won', '=', False)], limit=1)
@@ -458,9 +526,10 @@ class MetaLeadIngest(models.AbstractModel):
 
     @api.model
     def _normalize_phone(self, raw):
-        """Self-contained phone normalizer — strip to digits (no phonenumbers
-        dependency). Drop a leading NANP country code so '+1 (555) 123-4567' and
-        '5551234567' normalize equal."""
+        """Reduce a phone number to digits, dropping a leading NANP "1".
+
+        So '+1 (555) 123-4567' and '5551234567' compare equal. Avoids a
+        dependency on the phonenumbers library."""
         if not raw:
             return False
         digits = re.sub(r'\D', '', raw)
@@ -469,57 +538,61 @@ class MetaLeadIngest(models.AbstractModel):
         return digits or False
 
     # ------------------------------------------------------------------ #
-    # STEP 5a — MATCH PATH (enrich-blank-only + append answers + stamp id).
+    # Match path
     # ------------------------------------------------------------------ #
     @api.model
     def _enrich_match(self, Lead, Log, match, match_key, leadgen_id, trigger,
                       vals, attribution, answers, description_block, data, raw):
-        """Reached only for a usable (un-stamped) match — the Step-5 gate already
-        returned/discarded any already-claimed match. Enrich blank fields only
-        (never clobber a salesperson edit), stamp meta_leadgen_id (so a
-        re-send/re-sweep hits the Step-1 pre-check), append answers (never
-        replace). The stamp goes through the same savepoint + flush_recordset +
-        IntegrityError idiom as the create path (DB UNIQUE, not Python
-        search)."""
-        # Stamp only when currently empty (guaranteed above).
+        """Update an existing open lead with this submission.
+
+        Fills only blank fields (mapped answers and Meta attribution), so a
+        salesperson's edits are never overwritten, appends the answers, and
+        stamps meta_leadgen_id so a re-send is caught by the idempotency check.
+        The stamp is written in a savepoint and flushed so a concurrent claim
+        of the same id surfaces as an IntegrityError here."""
+        # The caller only passes matches with no leadgen id yet.
         enrich = {k: v for k, v in vals.items() if v and not match[k]}
+        enrich.update({k: v for k, v in attribution.items()
+                       if v and not match[k]})
         enrich['meta_leadgen_id'] = leadgen_id
         try:
             with self.env.cr.savepoint():
                 match.write(enrich)
                 match.flush_recordset()   # force the UNIQUE check in the savepoint
         except IntegrityError:
-            # Another txn claimed this leadgen_id concurrently — re-read & skip.
+            # Another transaction stamped this leadgen_id first.
             winner = self.env['crm.lead'].search(
                 [('meta_leadgen_id', '=', leadgen_id)], limit=1)
             Log._record(leadgen_id, trigger, 'skipped_idempotent',
                         lead=winner, raw=raw)
             return winner
         self._apply_answers(match, answers, description_block)
-        self._apply_utm(match, data, attribution.get('meta_campaign_name'))
+        # Keep any first-touch source/medium/campaign the lead already has
+        # (e.g. Website).
+        self._apply_utm(match, data, attribution.get('meta_campaign_name'),
+                        only_blank=True)
         Log._record(leadgen_id, trigger, 'success',
                     lead=match, match_key=match_key, raw=data)
         return match
 
     # ------------------------------------------------------------------ #
-    # STEP 5b — create path (the sole create; builds subject + type='lead').
+    # Create path
     # ------------------------------------------------------------------ #
     @api.model
     def _create_lead(self, Lead, Log, leadgen_id, trigger, vals, attribution,
                      answers, description_block, data, raw):
-        """Create the single new crm.lead for this leadgen_id (true non-match or
-        a different-id discard, both match_key='none'). Contact-less leads reach
-        here and are created with status='success'."""
-        created = data.get('created_time')
-        day = (created[:10] if created
-               else fields.Date.to_string(date.today()))
-        # DEFENSIVE read: the title is composed
-        # from the configured template, but the create path NEVER calls the
-        # hard validator — a junk value written outside Settings must not
-        # drop a paid lead. render_lead_name never raises and never returns
-        # empty, so a bad template falls back to the default subject. With the
-        # param unset, get_param returns DEFAULT_LEAD_NAME and the title is
-        # today's "Meta Lead • <form> • <day>" byte-for-byte.
+        """Create the new crm.lead for this leadgen id and return it.
+
+        On a UNIQUE violation (another worker got there first) returns the
+        existing lead and logs the skip."""
+        # Use the stored UTC submission date so the title matches
+        # meta_submitted_at.
+        submitted = attribution.get('meta_submitted_at')
+        day = fields.Date.to_string(submitted.date() if submitted
+                                    else date.today())
+        # The template isn't validated here: a bad value stored outside
+        # Settings must not block a lead, and render_lead_name falls back to
+        # the default title anyway.
         template = self.env['ir.config_parameter'].sudo().get_param(
             LEAD_NAME_PARAM, DEFAULT_LEAD_NAME)
         token_map = {
@@ -537,9 +610,8 @@ class MetaLeadIngest(models.AbstractModel):
         create_vals.update(attribution)   # meta_* fields + meta_platform + refs
         create_vals.update({'name': subject, 'type': 'lead',
                             'meta_leadgen_id': leadgen_id,
-                            # Stamp title provenance: this title is
-                            # the Meta-rendered subject, so the retro rename may
-                            # re-apply a new template to it until a human edits it.
+                            # Lets the retroactive rename update this title
+                            # until someone edits it by hand.
                             'meta_name_is_generated': True})
         try:
             with self.env.cr.savepoint():
@@ -555,22 +627,19 @@ class MetaLeadIngest(models.AbstractModel):
         self._apply_utm(lead, data, attribution.get('meta_campaign_name'))
         Log._record(leadgen_id, trigger, 'success',
                     lead=lead, match_key='none', raw=data)
-        # Only a genuinely new lead notifies — the dedup/enrich path (5a) and the
-        # idempotent skips never reach here.
+        # Only new leads notify; matches and duplicates never get here.
         self._notify_new_lead(lead)
         return lead
 
     # ------------------------------------------------------------------ #
-    # New-lead notification (best-effort; never blocks ingestion).
+    # New-lead notification
     # ------------------------------------------------------------------ #
     @api.model
     def _notify_new_lead(self, lead):
-        """Post an inbox notification about a freshly-created Meta lead to the
-        configured user, or to every active member of the configured group.
+        """Notify the configured user, or the active members of the configured group.
 
-        Driven by the Settings keys (disabled by default). Wrapped so any
-        failure here is logged and swallowed — notifying is a side effect and
-        must never roll back or abort the lead creation it follows.
+        Off by default. Any error is logged and swallowed so a notification
+        problem can never undo the lead that was just created.
         """
         try:
             ICP = self.env['ir.config_parameter'].sudo()
@@ -579,8 +648,7 @@ class MetaLeadIngest(models.AbstractModel):
             target_type = ICP.get_param(NOTIFY_TARGET_PARAM, 'user')
             if target_type == 'group':
                 gid = ICP.get_param(NOTIFY_GROUP_PARAM)
-                # Guard: the stored id must be a positive integer; a blank or
-                # malformed value resolves to an empty recordset (never raises).
+                # Blank or non-numeric ids give an empty recordset.
                 group = self.env['res.groups'].sudo().browse(
                     int(gid)) if (gid or '').strip().isdigit() \
                     else self.env['res.groups']
@@ -599,32 +667,26 @@ class MetaLeadIngest(models.AbstractModel):
             body = _("A new lead arrived from Meta Lead Ads: %s") % (
                 lead.name or _("Meta Lead"))
             self._post_inbox_alert(lead, partners, _("New Meta lead"), body)
-        except Exception:   # noqa: BLE001 — notification must never break ingest
+        except Exception:   # noqa: BLE001 - a failed notification must not break ingest
             _logger.warning(
                 "meta_lead_ads: new-lead notification failed for lead id=%s "
                 "(ingestion unaffected)", lead.id, exc_info=True)
 
     @api.model
     def _post_inbox_alert(self, lead, partners, subject, body):
-        """Deliver an operational alert to each recipient's Odoo INBOX (the bell
-        / Discuss Inbox), independent of their personal email-vs-inbox
-        preference AND of outgoing email (SMTP) availability.
+        """Put an alert in each recipient's Odoo Inbox.
 
-        We create the ``mail.message`` and ``inbox`` ``mail.notification`` rows
-        DIRECTLY, deliberately bypassing ``message_notify`` / ``_notify_thread``.
-        That serves two ends an operational alert needs:
-          1. it lands in the in-app inbox regardless of the recipient's
-             notification preference or a failing mail server (the reason this
-             alert was being lost — recipients preferred email and prod SMTP was
-             rejecting auth); and
-          2. it does NOT trigger third-party ``_notify_thread`` overrides — e.g.
-             a Firebase web-push hook that raises ``UserError`` when its key is
-             missing and would otherwise abort the whole notification.
+        Creates the mail.message and inbox mail.notification rows directly
+        instead of using message_notify, because:
+        - recipients who prefer email notifications would otherwise depend on
+          SMTP, and a broken mail server meant these alerts were lost;
+        - third-party _notify_thread overrides (e.g. a web-push module that
+          raises UserError when unconfigured) can't abort it.
 
-        ``reply_to`` and ``record_name`` are passed explicitly so
-        ``mail.message.create`` skips the catchall-alias lookup, which can
-        ``KeyError`` on a freshly-created record. The message is a
-        ``user_notification`` so it does NOT appear on the lead's chatter.
+        ``reply_to`` and ``record_name`` are set explicitly to skip the
+        catchall alias lookup, which can raise KeyError on a just-created
+        record. As a user_notification the message stays off the lead's
+        chatter.
         """
         message = self.env['mail.message'].sudo().create({
             'model': 'crm.lead',
@@ -648,12 +710,11 @@ class MetaLeadIngest(models.AbstractModel):
         return message
 
     # ------------------------------------------------------------------ #
-    # Answer capture (append, never replace).
+    # Answers
     # ------------------------------------------------------------------ #
     @api.model
     def _apply_answers(self, lead, answers, description_block):
-        """Append new meta.lead.answer rows + append the Q&A block to the lead
-        description. Never replaces existing answers/description."""
+        """Add answer rows and append the Q&A block to the description; never replace."""
         if answers:
             lead.write({'answer_ids': [(0, 0, a) for a in answers]})
         if description_block:
@@ -663,19 +724,17 @@ class MetaLeadIngest(models.AbstractModel):
             lead.write({'description': new_desc})
 
     # ------------------------------------------------------------------ #
-    # STEP 6 — UTM get-or-create.
+    # UTM
     # ------------------------------------------------------------------ #
     @api.model
-    def _apply_utm(self, lead, data, campaign_name=None):
-        """Set the inherited utm.mixin source_id/medium_id/campaign_id by
-        get-or-create — FB reuses the stock source, IG the seeded source, medium
-        is the seeded Paid Social, campaign is get-or-create by name (no dup
-        utm.campaign).
+    def _apply_utm(self, lead, data, campaign_name=None, only_blank=False):
+        """Set UTM source, medium and campaign on the lead.
 
-        ``campaign_name`` is the resolved attribution name: prefer it over the
-        raw payload ``campaign_name`` so a lead whose payload omits the name but
-        whose campaign id resolved (e.g. cron backfill) still gets the
-        utm.campaign link, instead of silently dropping it."""
+        Facebook uses the stock utm source, Instagram the one this module
+        seeds; medium is the seeded Paid Social. ``campaign_name`` is the
+        resolved name, preferred over the payload so cron-fetched leads that
+        lack the name in the payload still get a campaign. With
+        ``only_blank`` (match path) existing UTM values are kept."""
         platform = _PLATFORM.get((data.get('platform') or '').lower())
         if platform == 'facebook':
             source = self.env.ref('utm.utm_source_facebook',
@@ -696,19 +755,20 @@ class MetaLeadIngest(models.AbstractModel):
             campaign_name or data.get('campaign_name'))
         if camp:
             uvals['campaign_id'] = camp.id
+        if only_blank:
+            uvals = {k: v for k, v in uvals.items() if not lead[k]}
         if uvals:
             lead.write(uvals)
 
     @api.model
     def _get_or_create_campaign(self, name):
-        """get-or-create utm.campaign by name (=ilike search then create — never
-        a blind .create())."""
+        """Return the utm.campaign with this name (case-insensitive), creating it if needed."""
         Campaign = self.env['utm.campaign']
         if not name or not name.strip():
             return Campaign
         clean = name.strip()
         lock_key = 'meta_lead_ads.utm.campaign:%s' % clean.lower()
-        # Serialize workers by normalized campaign name before search/create.
+        # Lock so two workers don't both create the same campaign.
         self.env.cr.execute(
             "SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", (lock_key,))
         rec = Campaign.search([('name', '=ilike', clean)], limit=1)

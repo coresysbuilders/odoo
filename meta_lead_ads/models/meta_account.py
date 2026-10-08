@@ -16,17 +16,14 @@ from .exceptions import (
 
 _logger = logging.getLogger(__name__)
 
-# Single source of truth for the token-health activity summary. Referenced by
-# both activity_schedule(summary=...) and the dedup search_count in
-# _alert_token_dead, so the two can never drift apart.
+# Shared by activity_schedule() and the dedup search_count in _alert_token_dead,
+# so the two always match.
 _TOKEN_DEAD_SUMMARY = 'Meta token invalid/expired'
 
-# Scheduler self-check. The crons stamp CRON_HEARTBEAT_PARAM every time they run;
-# INSTALLED_AT_PARAM is set by the post-install hook. The health check compares
-# their age against this tolerance so it can tell, without depending on cron
-# itself, whether Odoo's scheduler is actually processing our jobs. The drain
-# cron runs every minute, so 15 minutes is ~15 missed runs — well clear of a
-# momentarily busy server but quick enough to surface a truly stalled scheduler.
+# Scheduler self-check. Every Meta cron stamps CRON_HEARTBEAT_PARAM when it runs;
+# the post-install hook sets INSTALLED_AT_PARAM. The drain cron runs every
+# minute, so 15 minutes without a heartbeat means the scheduler has stopped,
+# not just that the server was briefly busy.
 CRON_HEARTBEAT_PARAM = 'meta_lead_ads.cron_last_run'
 INSTALLED_AT_PARAM = 'meta_lead_ads.installed_at'
 SCHEDULER_STALE_MINUTES = 15
@@ -41,13 +38,10 @@ class MetaAccount(models.Model):
     name = fields.Char(required=True)
     account_id = fields.Char(string='Meta Account ID', required=True, index=True)
     active = fields.Boolean(default=True)
-    # Credentials. App ID is public app metadata, not a secret: it stays
-    # ungrouped so a Meta User can read it. The secret fields (App Secret,
-    # Access Token) carry field-level groups= so the key is stripped from a
-    # non-admin ORM read and from the view. token_owner_id is the stable
-    # account identity from the token owner (user_id/profile_id) and is just an
-    # identifier, so it stays ungrouped.
-    app_id = fields.Char(string='App ID')   # public app metadata; no groups=
+    # App Secret and Access Token are admin-only (groups=), so non-admins can't
+    # read them through the ORM or the form. App ID and the token owner id are
+    # plain identifiers and stay visible to Meta Users.
+    app_id = fields.Char(string='App ID')
     app_secret = fields.Char(string='App Secret',
                              groups='meta_lead_ads.group_meta_admin')
     access_token = fields.Char(string='Access Token',
@@ -57,10 +51,9 @@ class MetaAccount(models.Model):
     page_ids = fields.One2many('meta.page', 'account_id', string='Pages')
     page_count = fields.Integer(compute='_compute_page_count', store=True)
 
-    # Connection status. Not secret -- these leak no token, so they stay
-    # readable by a Meta User (no groups=). The readiness label is
-    # 'lead_retrieval_granted': debug_token cannot confirm Advanced Access /
-    # Business Verification, so it must not claim a production-ready state.
+    # Connection status, readable by Meta Users. The best state is
+    # 'lead_retrieval_granted', not "ready": debug_token can't tell us whether
+    # Advanced Access or Business Verification are done.
     token_valid = fields.Boolean(string='Token Valid', readonly=True)
     token_type = fields.Char(string='Token Type', readonly=True)
     expires_at = fields.Datetime(string='Token Expires', readonly=True)
@@ -75,9 +68,8 @@ class MetaAccount(models.Model):
         string='Access Status', readonly=True)
     last_checked = fields.Datetime(string='Last Checked', readonly=True)
 
-    # Scheduler self-check (computed live, never stored): leads only sync if
-    # Odoo's job scheduler is actually running our crons, which silently fails
-    # on a misconfigured server. These surface that state on the account form.
+    # Computed live, not stored. Leads only sync if Odoo's scheduler actually
+    # runs our crons, and a misconfigured server fails at that silently.
     cron_status = fields.Selection(
         [('ok', 'Running'), ('pending', 'Waiting for first run'),
          ('stalled', 'Not running'), ('disabled', 'Disabled')],
@@ -91,7 +83,7 @@ class MetaAccount(models.Model):
 
     @api.depends_context('uid')
     def _compute_cron_status(self):
-        # Global state, identical for every account record — compute once.
+        # Same answer for every account, so compute it once.
         health = self._scheduler_health()
         for rec in self:
             rec.cron_status = health['status']
@@ -103,11 +95,8 @@ class MetaAccount(models.Model):
             rec.page_count = len(rec.page_ids)
 
     def action_open_pages(self):
-        # The child list's "New" button is auto-hidden for users without
-        # create ACL. Meta Users have perm_create=0 on meta.page, so they
-        # cannot create here; Meta Admins (full CRUD) can still create via
-        # drill-down. No context={'create': False} override -- that would
-        # wrongly block legitimate admin creation.
+        # No context={'create': False}: Odoo already hides "New" for Meta Users
+        # (no create ACL on meta.page), and admins still need to create here.
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
@@ -120,17 +109,11 @@ class MetaAccount(models.Model):
 
     @api.model
     def _map_token_status(self, data):
-        """Translate a debug_token data{} object into status-field values.
-        Returns a dict suitable for write()/create().
+        """Turn a debug_token data{} object into status field values.
 
-        An HTTP-200 introspection with is_valid:false (and usually a nested
-        data.error) must map to auth_failed -- never report healthy on an
-        invalid token. expires_at == 0 means a non-expiring System User token,
-        so store empty. The readiness derivation is leads_retrieval_granted =
-        is_valid AND 'leads_retrieval' in scopes: a valid token is not a
-        production-ready connection, and debug_token cannot confirm Advanced
-        Access / Business Verification. The connect wizard calls this same
-        mapper to avoid duplicating the data{}->fields logic.
+        A 200 response with is_valid false maps to auth_failed. expires_at 0
+        means a non-expiring System User token and is stored empty. The connect
+        wizard uses this mapper too.
         """
         if not data or data.get('error') or not data.get('is_valid'):
             return {'token_valid': False, 'access_status': 'auth_failed',
@@ -139,9 +122,7 @@ class MetaAccount(models.Model):
                     'last_checked': fields.Datetime.now()}
         scopes = data.get('scopes') or []
         leads = 'leads_retrieval' in scopes
-        # expires_at comes straight from parsed Graph JSON; a malformed/forged
-        # (but is_valid) body could carry a stringized or non-numeric value.
-        # Coerce defensively so datetime.fromtimestamp cannot crash the mapper.
+        # Coerce expires_at: a non-numeric value would crash fromtimestamp.
         exp = data.get('expires_at') or 0
         try:
             exp = int(exp)
@@ -166,27 +147,14 @@ class MetaAccount(models.Model):
 
     @api.model
     def _webhook_app_secret(self):
-        """Return the single designated app's App Secret for HMAC
-        verification. Read under sudo() by the public webhook controller; it
-        must never be logged, echoed, or returned to a client.
+        """Return the App Secret used to verify webhook signatures.
 
-        Selection rule: the lowest-id account that actually has a non-empty App
-        Secret, via an explicit order='id asc'. The model's default order is by
-        name, so a bare search here would pick the alphabetically-first account;
-        the explicit id ordering makes the secret pick stable and independent of
-        the display name across calls.
-
-        Secret-less accounts are skipped. The pick is filtered in Python (not a
-        domain on the groups= secret field) so it never trips a field-access
-        check, and it reads .app_secret directly. Otherwise a lowest-id account
-        with an empty secret would shadow a later account that had one,
-        returning '' and bouncing every inbound webhook with a 403 -- silently
-        disabling ingestion for the configured app. Now an empty-secret first
-        account is skipped; only an all-empty install still returns falsy.
-
-        A true multi-app seam -- per-event page_id -> account -> that app's
-        secret routing, plus an is_webhook_app selector field -- is out of
-        scope here. The first-with-secret rule is the deliberate simplification.
+        Called under sudo() by the public webhook controller; never log or
+        return it to a client. Picks the lowest-id account that has a secret
+        (explicit id order, since the default order is by name). Accounts
+        without a secret are skipped, otherwise an empty one would make every
+        webhook fail with 403. Per-app routing for several Meta apps is not
+        supported.
         """
         accounts = self.search([], order='id asc')
         for account in accounts:
@@ -195,10 +163,9 @@ class MetaAccount(models.Model):
         return accounts[:1].app_secret
 
     def action_test_connection(self):
-        """Re-run debug_token and refresh the persistent status.
+        """Re-run debug_token and refresh the stored status.
 
-        Error handling is token-free: never put the token/secret or raw Meta
-        JSON in a UserError or log.
+        Error messages never include the token, secret or raw Meta response.
         """
         self.ensure_one()
         client = self.env['meta.graph.client']
@@ -214,84 +181,42 @@ class MetaAccount(models.Model):
         except (MetaPermanentError, MetaRateLimitError, MetaTransientError):
             raise UserError(_("Could not reach Meta to validate the token. "
                               "Check the App ID / App Secret and try again."))
-        # Also classifies an HTTP-200 is_valid:false body as auth_failed.
         self._apply_token_status(data)
         return True
 
     @api.model
     def _cron_token_health(self):
-        """Daily token-health sweep.
+        """Daily check of every active account's token.
 
-        Re-check every active account's token via the existing
-        action_test_connection() path -- the real, only entry point.
-        action_test_connection already persists token_valid=False +
-        access_status='auth_failed' on both the code-190 OAuthException path
-        and the HTTP-200 is_valid:false body, raising UserError to signal an
-        auth failure.
-
-        The inner except is narrow and state-driven: we catch only UserError --
-        the documented auth-failure signal -- because the alert decision reads
-        the post-call token_valid state, not the presence or absence of the
-        exception.
-
-        Per-account isolation: each account's body runs inside its own
-        `with self.env.cr.savepoint():`, wrapped by an outer `except Exception`
-        that logs token-free (account.id only -- no token/secret/raw body/
-        page-id/display-name) and continues the sweep. So a genuinely
-        unexpected (non-UserError) failure on one account -- including an
-        _alert_token_dead failure -- no longer aborts the remaining accounts.
-        This mirrors meta.lead.form._cron_backfill's per-form savepoint +
-        id-only broad catch.
-
-        Alert whenever the post-call token is invalid (`not
-        account.token_valid`) -- not only on a valid->invalid transition. This
-        covers both a fresh transition and an account that was already invalid.
-        The open-activity dedup inside _alert_token_dead is what prevents an
-        alert storm.
+        Alerts whenever the token is invalid after the check, not only on the
+        transition; _alert_token_dead dedups so this doesn't spam. Each account
+        runs in its own savepoint, so one unexpected failure is logged (by id
+        only) and the sweep carries on.
         """
         for account in self.search([('active', '=', True)]):
             try:
-                # Per-account savepoint (sibling isolation): all of this
-                # account's work -- the auth-test write and the state-driven
-                # alert -- is contained. If _alert_token_dead() raises after
-                # action_test_connection() mutated the token-health fields, this
-                # savepoint rolls back that account's writes for this sweep (a
-                # partial, un-alerted update is not persisted; it is re-attempted
-                # next sweep) and the outer catch continues to the next account.
+                # If the alert fails after the status write, roll back this
+                # account's changes so the next sweep tries again cleanly.
                 with self.env.cr.savepoint():
                     try:
                         account.action_test_connection()
                     except UserError:
-                        # Documented auth-failure signal; token_valid was already
-                        # persisted False by action_test_connection. Decision
-                        # below is state-driven, so swallowing this is correct.
+                        # Auth failure; token_valid is already False and the
+                        # check below handles it.
                         pass
                     if not account.token_valid:
                         account._alert_token_dead()
             except Exception:
-                # Genuinely-unexpected (non-UserError) error on this account:
-                # isolate it, log token-free referencing only account.id (no
-                # token/secret/raw body/page-id/display-name), and continue the
-                # sweep so the remaining accounts are still checked.
                 _logger.exception(
                     "Meta token-health: unexpected error on account id=%s "
                     "(no token/secret logged)", account.id)
 
     def _alert_token_dead(self):
-        """Raise a single de-duplicated, token-free alert for a dead token.
-        Schedules a To-Do mail.activity on this account and (only when a real
-        admin recipient exists) emails the Meta Admins.
+        """Schedule a To-Do and email the Meta Admins about a dead token.
 
-        Open-activity dedup: an open token-health To-Do already present
-        suppresses both a second activity and a second email. The search_count
-        keys on the shared _TOKEN_DEAD_SUMMARY constant. mail.activity rows are
-        deleted by Odoo when an activity is marked done, so this matches open
-        activities only by construction -- a completed To-Do does not
-        permanently suppress a future re-alert. No active/done-state term is
-        added to the domain (that would re-introduce permanent suppression).
-
-        Token-free: the activity note, email subject, and email body reference
-        self.name only -- never a token, App Secret, or raw Meta JSON.
+        Skipped if an open To-Do with the same summary exists. Odoo deletes
+        activities when they're marked done, so a closed one doesn't block the
+        next alert. The note and email mention only the account name.
         """
         self.ensure_one()
         existing = self.env['mail.activity'].search_count([
@@ -301,8 +226,7 @@ class MetaAccount(models.Model):
         ])
         if not existing:
             admins = self.env.ref('meta_lead_ads.group_meta_admin').users
-            # Assign to a Meta Admin, or fall back to the cron/current user
-            # when the admin group is empty.
+            # Fall back to the current (cron) user if there are no admins.
             self.activity_schedule(
                 'mail.mail_activity_data_todo',
                 summary=_TOKEN_DEAD_SUMMARY,
@@ -310,8 +234,7 @@ class MetaAccount(models.Model):
                        'System User token.'),
                 user_id=(admins[:1].id or self.env.uid),
             )
-            # Filter out admins without an email; never send a mail.mail with
-            # an empty email_to.
+            # Skip admins with no email; don't send with an empty email_to.
             recipients = [e for e in admins.mapped('email') if e]
             if recipients:
                 vals = {
@@ -326,25 +249,23 @@ class MetaAccount(models.Model):
                 self.env['mail.mail'].create(vals).send()
 
     # ------------------------------------------------------------------ #
-    # Scheduler self-check (SYNC reliability). The whole pipeline depends on
-    # Odoo's cron worker actually running; on a misconfigured server (a
-    # dbfilter with no db_name, max_cron_threads=0, or --no-cron) the worker
-    # sits idle and leads silently never sync. These helpers detect that and
-    # tell the admin how to fix it.
+    # Scheduler self-check. If the cron worker never runs (dbfilter without
+    # db_name, max_cron_threads=0, --no-cron) leads silently stop syncing.
+    # These helpers detect that and tell the admin what to fix.
     # ------------------------------------------------------------------ #
     @api.model
     def _ping_scheduler_heartbeat(self):
-        """Record that a cron just ran. Called at the start of every Meta cron,
-        so a fresh value proves the scheduler is alive."""
+        """Record that a Meta cron just ran."""
         self.env['ir.config_parameter'].sudo().set_param(
             CRON_HEARTBEAT_PARAM, fields.Datetime.to_string(fields.Datetime.now()))
 
     @api.model
     def _scheduler_health(self):
-        """Classify whether the scheduler is running our jobs, reading the
-        heartbeat plus the drain cron's nextcall. Both come from stored state,
-        so this works even when cron is NOT running — exactly the case it must
-        catch. Returns a dict with a status code and an admin-facing message."""
+        """Return {'status', 'message'} describing whether our crons run.
+
+        Reads only stored state (the heartbeat and the drain cron's nextcall),
+        so it works when the scheduler itself is down.
+        """
         ICP = self.env['ir.config_parameter'].sudo()
         now = fields.Datetime.now()
         stale = timedelta(minutes=SCHEDULER_STALE_MINUTES)
@@ -357,16 +278,15 @@ class MetaAccount(models.Model):
                                  "automatically. Re-enable it under Settings > "
                                  "Technical > Scheduled Actions.")}
         last_run = fields.Datetime.to_datetime(ICP.get_param(CRON_HEARTBEAT_PARAM))
-        # A recent heartbeat is positive proof the scheduler is processing jobs.
         if last_run and now - last_run <= stale:
             return {'status': 'ok',
                     'message': _("Scheduler healthy — a Meta cron last ran %s.")
                     % self._humanize_ago(now - last_run)}
-        # No recent heartbeat. A nextcall frozen well in the past confirms the
-        # worker is idle (a healthy scheduler keeps nextcall at or near now).
+        # A running scheduler keeps nextcall close to now; one stuck in the
+        # past means the worker is idle.
         if drain.nextcall and now - drain.nextcall > stale:
             return {'status': 'stalled', 'message': self._scheduler_fix_hint()}
-        # Freshly installed and not yet confirmed — give cron a few minutes.
+        # Just installed: give cron a few minutes before calling it stalled.
         installed_at = fields.Datetime.to_datetime(ICP.get_param(INSTALLED_AT_PARAM))
         if installed_at and now - installed_at <= stale:
             return {'status': 'pending',
@@ -397,8 +317,7 @@ class MetaAccount(models.Model):
         return _("%s days ago") % (hours // 24)
 
     def action_check_scheduler(self):
-        """Manual 'Check Scheduler' button — re-run the health check and report
-        it as a notification."""
+        """Check Scheduler button: show the health check as a notification."""
         health = self._scheduler_health()
         return {
             'type': 'ir.actions.client',
