@@ -6,7 +6,7 @@
 
 {
     'name': 'Facebook Lead Ads to CRM',
-    'version': '18.0.13.3.6',
+    'version': '18.0.13.4.0',
     'category': 'Sales/CRM',
     'license': 'OPL-1',
     'summary': 'Bring Facebook & Instagram Lead Ads straight into Odoo CRM. A '
@@ -17,14 +17,12 @@
     'author': 'CoreSys Builders',
     'maintainer': 'CoreSys Builders',
     'support': 'info@coresysbuilders.com',
-    # Paid app on apps.odoo.com. The portal listing price is authoritative; these
-    # keys pre-fill it. OPL-1 (license below) makes this a proprietary paid app.
+    # Paid app on apps.odoo.com. The price set on the portal wins; these keys
+    # only pre-fill it.
     'price': 30.00,
     'currency': 'USD',
-    # NOTE: no 'website' key — when set, the Apps card "Learn More" link
-    # redirects out to that URL instead of opening this module's own
-    # description page (static/description/index.html). Company info lives in
-    # the description instead.
+    # No 'website' key on purpose: with one set, the Apps "Learn More" link
+    # leaves Odoo instead of opening static/description/index.html.
     'depends': ['crm', 'utm', 'mail'],
     'post_init_hook': 'post_init_hook',
     'data': [
@@ -44,22 +42,16 @@
         'views/meta_sync_log_views.xml',
         'views/meta_webhook_event_views.xml',
         'views/meta_menus.xml',
-        # Loaded after meta_menus.xml and meta_onboarding_views.xml so the three
-        # <delete model="ir.ui.menu"> ids still resolve in the same upgrade, and
-        # so the field-mapping and settings actions the settings view references
-        # next are already defined.
+        # Must come after meta_menus.xml and meta_onboarding_views.xml: its
+        # <delete model="ir.ui.menu"> records need those menu ids to exist.
         'views/meta_settings_menu.xml',
-        # The <app> settings form references %(...)d actions defined just above
-        # and earlier in the list, so it must parse last.
+        # References %(...)d actions from the files above, so it loads after them.
         'views/res_config_settings_views.xml',
-        # Phase 11: client action + top-level admin-gated "Meta Leads" menu.
-        # group_meta_admin is defined first (security/meta_security.xml), so the
-        # menuitem groups= references resolve at parse time.
+        # Dashboard client action and the admin-only "Meta Leads" menu.
         'views/meta_dashboard.xml',
     ],
-    # Phase 11: first-ever asset bundle — the read-only Leads Analytics Dashboard
-    # OWL component, its QWeb template, and brand SCSS. The QWeb template lives in
-    # the bundle (NOT the data list above).
+    # Dashboard OWL component, template and styles. The QWeb template goes in
+    # the asset bundle, not in 'data'.
     'assets': {
         'web.assets_backend': [
             'meta_lead_ads/static/src/dashboard/**/*.js',
@@ -68,13 +60,9 @@
         ],
     },
     'external_dependencies': {'python': []},
-    # Apps-store / description-page imagery. The FIRST entry is the MAIN store
-    # image — the animated cover.gif (looping diagram -> features, ~1.16 MB), so
-    # the apps.odoo.com grid card animates and the description page (index.html)
-    # leads with it. The remaining entries are the in-product screenshots shown in
-    # the apps.odoo.com gallery; they are the same files embedded in the
-    # description walkthrough. The static cover.jpg is kept on disk as a fallback.
-    # The small square Apps-list icon is static/description/icon.png (not listed).
+    # The first image is the store cover (animated GIF); the rest are the
+    # gallery screenshots also used in index.html. cover.jpg stays on disk as a
+    # static fallback, and the Apps icon is static/description/icon.png.
     'images': [
         'static/description/cover.gif',
         'static/description/screenshots/01-dashboard.jpg',

@@ -9,16 +9,11 @@ from odoo.tests.common import TransactionCase, tagged
 
 @tagged('post_install', '-at_install')
 class TestUtmSeed(TransactionCase):
-    """UTM seed records resolve via stable external IDs.
-
-    Locks the external-id contract (model + name) the attribution code relies
-    on for get-or-create.
-    """
+    """The UTM records used for attribution exist under their external IDs."""
 
     def test_utm_external_ids_resolve(self):
-        # Facebook reuses Odoo's stock utm.source (no duplicate record).
-        # Instagram + Paid Social are seeded by this module (stock ships
-        # neither), under stable meta_lead_ads.* external ids.
+        # Facebook is Odoo's stock source. Odoo ships no Instagram source or
+        # Paid Social medium, so the module adds those.
         fb = self.env.ref('utm.utm_source_facebook')
         ig = self.env.ref('meta_lead_ads.utm_source_meta_instagram')
         ps = self.env.ref('meta_lead_ads.utm_medium_paid_social')

@@ -22,10 +22,8 @@
         <field name="implied_ids" eval="[(4, ref('group_meta_user'))]"/>
     </record>
 
-    <!-- The onboarding wizard records are transient and hold the App Secret and
-         access token mid-flow. Without a rule, any Meta Admin can read another
-         admin's in-progress wizard (and its credentials). Scope each admin to
-         the records they created. -->
+    <!-- Onboarding wizards hold the App Secret and token while in progress.
+         Without these rules one Meta Admin could read another's wizard. -->
     <record id="rule_meta_onboarding_own" model="ir.rule">
         <field name="name">Meta onboarding: own records only</field>
         <field name="model_id" ref="model_meta_onboarding"/>

@@ -39,14 +39,14 @@
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">3.</span>Read every lead in context</h3>
-  <p style="margin:10px 0;">Leads come in as ordinary <code>crm.lead</code> records you can qualify and convert. A Meta Attribution section records the platform, campaign, ad set, ad, form and page, plus the originating Meta Lead ID.</p>
+  <p style="margin:10px 0;">Leads come in as ordinary <code>crm.lead</code> records you can qualify and convert. A Meta Attribution section records the platform, campaign, ad set, ad, form and page, the exact date and time the form was submitted, and the originating Meta Lead ID. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys &mdash; platform, campaign, ad set, ad, form and submission day &mdash; ready for list, pivot and graph reporting.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/04-lead-attribution.jpg" alt="CRM lead with Meta attribution" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A lead with its full Meta attribution, alongside the standard CRM fields.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">4.</span>Map the questions you care about</h3>
-  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to an existing CRM field, or promote an answer into a new field from the lead itself &mdash; the answers you collect are never discarded.</p>
+  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to a standard or custom CRM field &mdash; text, selection, checkbox, number, amount, date, or a link to existing records such as country or tags &mdash; and reuse the same field across all your forms. Or promote an answer into a new field from the lead itself. An answer that doesn't fit its field is kept on the lead rather than guessed, so the answers you collect are never discarded.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/05-field-mapping.jpg" alt="Mapping Meta form questions to CRM fields" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Field mappings link a form question to the CRM field it should fill.</figcaption>
@@ -74,6 +74,7 @@
         <li style="padding:3px 0;">Contact name, email and phone (with normalized-phone dedup)</li>
         <li style="padding:3px 0;">Platform &mdash; Facebook or Instagram</li>
         <li style="padding:3px 0;">Campaign, ad set and ad &mdash; names and IDs</li>
+        <li style="padding:3px 0;">The date and time the form was submitted</li>
         <li style="padding:3px 0;">Lead form and Page &mdash; names, IDs and linked records</li>
         <li style="padding:3px 0;">Meta Lead ID and the originating account</li>
         <li style="padding:3px 0;">All custom form answers, stored in full</li>
@@ -83,7 +84,8 @@
       <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">How it stays correct</h3>
       <ul style="margin:10px 0;padding-left:20px;">
         <li style="padding:3px 0;">Exactly-once creation via a database UNIQUE constraint</li>
-        <li style="padding:3px 0;">Two-layer dedup: Meta Lead ID, then email and phone</li>
+        <li style="padding:3px 0;">Two-layer dedup: Meta Lead ID, then email and phone &mdash; a merged lead keeps its own data and gains the Meta attribution</li>
+        <li style="padding:3px 0;">Typed field mapping that never guesses &mdash; unconvertible answers are kept</li>
         <li style="padding:3px 0;">HMAC-SHA256 verification on the raw webhook body</li>
         <li style="padding:3px 0;">Tokens and App Secret restricted to administrators</li>
         <li style="padding:3px 0;">Get-or-create UTM mapping &mdash; no duplicate UTM records</li>

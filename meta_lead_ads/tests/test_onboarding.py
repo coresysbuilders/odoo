@@ -4,15 +4,11 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-"""Tests for the onboarding wizard + token exchange.
+"""Tests for the onboarding wizard and token exchange.
 
-These pin the token exchange, token debug, page/form discovery, status mapping,
-and the wizard commit/reconcile path.
-
-The mocked-Session harness (_make_response / _patched_session / _load_json /
-_FIXTURES) is shared with test_graph_client.py.
-
-Note: assertRaises takes a single exception class, never a tuple.
+Covers token exchange, debug_token, page/form discovery, status mapping and
+the wizard's reconcile step. The mocked-Session helpers mirror the ones in
+test_graph_client.py.
 """
 import os
 import json
@@ -34,8 +30,7 @@ def _load_json(filename):
 
 
 def _make_response(status=200, body=None, headers=None, raw_text=None):
-    """Build a fake requests.Response-like object (shared with
-    test_graph_client.py)."""
+    """Build a fake requests.Response-like object."""
     resp = mock.Mock()
     resp.status_code = status
     resp.ok = status < 400
@@ -56,12 +51,10 @@ class TestOnboarding(TransactionCase):
         return self.env['meta.graph.client']
 
     def _patched_session(self, response=None, side_effect=None):
-        """Patch the client's _get_session to return a Mock whose .request
-        yields the given response (or raises side_effect). Shared with
-        test_graph_client.py."""
+        """Patch _get_session so its .request returns `response` or raises
+        `side_effect`."""
         client = self._client()
-        # Patch on the class, not the recordset instance (Odoo 18 rejects setattr
-        # of a method on a recordset).
+        # Patch the class: Odoo recordsets don't allow setattr of a method.
         get_session = mock.patch.object(type(client), '_get_session').start()
         self.addCleanup(mock.patch.stopall)
         session = get_session.return_value
@@ -72,7 +65,7 @@ class TestOnboarding(TransactionCase):
         return client, session
 
     # ==================================================================
-    # exchange_token (tokenless on the OAuth endpoint)
+    # exchange_token (the OAuth endpoint takes no access_token)
     # ==================================================================
 
     def test_exchange_token_parses_access_token_and_expiry(self):
@@ -82,7 +75,6 @@ class TestOnboarding(TransactionCase):
         self.assertEqual(result, ('LONG_LIVED_USER_TOKEN', 5183944))
 
     def test_exchange_token_sends_no_access_token_param(self):
-        # The OAuth endpoint must not receive an injected bearer token.
         client, session = self._patched_session(
             _make_response(200, _load_json('oauth_exchange.json')))
         client.exchange_token('APPID', 'SECRET', 'SHORT')
@@ -94,14 +86,13 @@ class TestOnboarding(TransactionCase):
         self.assertEqual(params['grant_type'], 'fb_exchange_token')
 
     def test_exchange_token_auth_failure_raises_meta_auth(self):
-        # A failed exchange raises a single exception class.
         client, session = self._patched_session(
             _make_response(400, _load_json('debug_token_error_190.json')))
         with self.assertRaises(MetaAuthError):
             client.exchange_token('APPID', 'SECRET', 'SHORT')
 
     # ==================================================================
-    # debug_token (valid + both invalid shapes)
+    # debug_token (valid, plus both invalid shapes)
     # ==================================================================
 
     def test_debug_token_returns_data_object(self):
@@ -115,8 +106,8 @@ class TestOnboarding(TransactionCase):
         self.assertEqual(result['user_id'], '777000000000001')
 
     def test_debug_token_uses_app_token_form(self):
-        # The app-token auth form is access_token='APPID|SECRET',
-        # input_token=the token to inspect.
+        # Authenticates with the app token 'APPID|SECRET'; input_token is the
+        # token being inspected.
         client, session = self._patched_session(
             _make_response(200, _load_json('debug_token_valid_sut.json')))
         client.debug_token('APPID', 'SECRET', 'INPUT')
@@ -125,18 +116,16 @@ class TestOnboarding(TransactionCase):
         self.assertEqual(params['access_token'], 'APPID|SECRET')
 
     def test_debug_token_transport_190_raises_meta_auth(self):
-        # Invalid shape (a): transport-level token-death envelope (HTTP 400,
-        # top-level error 190).
+        # HTTP 400 with a top-level error 190.
         client, session = self._patched_session(
             _make_response(400, _load_json('debug_token_error_190.json')))
         with self.assertRaises(MetaAuthError):
             client.debug_token('APPID', 'SECRET', 'BAD')
 
     def test_debug_token_http200_invalid_body_returned(self):
-        # Invalid shape (b): HTTP 200 whose data.is_valid is false with a nested
-        # data.error. _handle_response does not raise (it is a 200); debug_token
-        # returns the data object as-is. Mapping-to-invalid is asserted in the
-        # status test below.
+        # HTTP 200 with data.is_valid false and a nested data.error. Nothing is
+        # raised; the data object comes back as-is and the status mapper below
+        # turns it into auth_failed.
         client, session = self._patched_session(
             _make_response(200, _load_json('debug_token_invalid_200.json')))
         data = client.debug_token('APPID', 'SECRET', 'BAD')
@@ -158,12 +147,12 @@ class TestOnboarding(TransactionCase):
                          ['111111111111111', '333333333333333'])
         self.assertEqual(pages[0]['access_token'], 'PAGE_TOKEN_A')
         self.assertEqual(pages[1]['access_token'], 'PAGE_TOKEN_B')
-        # proves the 2nd page was actually fetched — no truncation.
+        # Second page was actually fetched.
         self.assertEqual(session.request.call_count, 2)
 
     def test_discover_pages_second_call_uses_after_cursor_not_next_url(self):
-        # The bare-path guard: the 2nd call must page via after=CURSOR, never by
-        # feeding paging.next (a full URL) to _request.
+        # Page two must be fetched with after=CURSOR, not by passing the
+        # paging.next URL in as the path.
         client, session = self._patched_session(side_effect=[
             _make_response(200, _load_json('me_accounts_page1.json')),
             _make_response(200, _load_json('me_accounts_page2.json')),
@@ -171,12 +160,9 @@ class TestOnboarding(TransactionCase):
         client.discover_pages('USER_TOKEN')
         second_params = session.request.call_args_list[1].kwargs['params']
         self.assertEqual(second_params.get('after'), 'CURSOR_AFTER_1')
-        # The 2nd page rides after=CURSOR in params, never paging.next smuggled as
-        # the path. session.request ALWAYS gets the fully-built base URL (so '://'
-        # is expected and legitimate); the smuggling signature is a query string on
-        # the URL itself — there is none, because params ride separately. The hard
-        # full-URL/query path-rejection guard lives in
-        # test_graph_client.test_request_rejects_full_url_path.
+        # session.request always gets a full base URL, so '://' is fine. A
+        # smuggled paging.next would show up as a query string on the URL.
+        # The strict path check is in test_graph_client.
         for call in session.request.call_args_list:
             args, kwargs = call
             path_like = (args[1] if len(args) > 1 else kwargs.get('url')) or ''
@@ -201,28 +187,27 @@ class TestOnboarding(TransactionCase):
     # ==================================================================
 
     def _map(self, fixture):
-        """Feed a debug_token `data` object into the wizard's status mapper."""
+        """Run a debug_token `data` fixture through the wizard's status mapper."""
         wizard = self.env['meta.onboarding']
         return wizard._map_token_status(_load_json(fixture)['data'])
 
     def test_status_mapping_lead_retrieval_granted(self):
-        # The granted label is 'lead_retrieval_granted', not 'production_ready'.
         status = self._map('debug_token_valid_sut.json')
         self.assertIs(status['token_valid'], True)
         self.assertIn('SYSTEM_USER', status['token_type'])
         self.assertIs(status['leads_retrieval_granted'], True)
         self.assertEqual(status['access_status'], 'lead_retrieval_granted')
-        # expires_at 0 = non-expiring -> empty/false.
+        # expires_at 0 means the token never expires.
         self.assertFalse(status['expires_at'])
 
     def test_status_mapping_dev_test_only(self):
-        # A valid token, but leads_retrieval absent -> not production-ready.
+        # Valid token without leads_retrieval: test leads only.
         status = self._map('debug_token_dev_no_leads_retrieval.json')
         self.assertIs(status['leads_retrieval_granted'], False)
         self.assertEqual(status['access_status'], 'dev_test_only')
 
     def test_status_mapping_http200_invalid_is_auth_failed(self):
-        # A 200 body with is_valid:false + data.error must never report healthy.
+        # A 200 body with is_valid false must not read as healthy.
         status = self._map('debug_token_invalid_200.json')
         self.assertIs(status['token_valid'], False)
         self.assertEqual(status['access_status'], 'auth_failed')
@@ -232,8 +217,7 @@ class TestOnboarding(TransactionCase):
     # ==================================================================
 
     def test_token_never_logged_on_validate_error(self):
-        # A validate failure raises a token-free UserError: the secret token
-        # string must not appear in the message.
+        # The UserError raised on a failed validate must not contain the token.
         secret = 'EAALsecretTOKEN_must_not_leak_ZZZ'
         wizard = self.env['meta.onboarding'].create({
             'app_id': '100000000000001',
@@ -248,7 +232,7 @@ class TestOnboarding(TransactionCase):
         self.assertNotIn(secret, str(ctx.exception))
 
     # ==================================================================
-    # additive reconcile (unselected vs disappeared) + identity
+    # reconcile (unselected vs disappeared) and account identity
     # ==================================================================
 
     def _make_account(self, account_id='777000000000001', app_id='100000000000001'):
@@ -256,8 +240,8 @@ class TestOnboarding(TransactionCase):
             'name': 'Acme', 'account_id': account_id, 'app_id': app_id})
 
     def test_reconcile_is_additive(self):
-        # Pages still present in a fresh discovery are kept/created; pages absent
-        # from the fresh discovery are deactivated (never unlinked).
+        # Pages still discovered are kept or created; pages no longer
+        # discovered are archived, not deleted.
         acc = self._make_account()
         self.env['meta.page'].create({
             'name': 'Acme Storefront', 'page_id': '111111111111111',
@@ -280,16 +264,13 @@ class TestOnboarding(TransactionCase):
         self.assertTrue(self.env['meta.page'].search([
             ('page_id', '=', '333333333333333')]))  # new page created
         self.assertFalse(gone.active)               # absent -> active=False
-        # Absent pages are deactivated, not unlinked — the row still exists but
-        # is inactive, so the search must bypass the default active_test to see
-        # it.
+        # Archived rows need active_test=False to be found.
         self.assertTrue(self.env['meta.page'].with_context(
             active_test=False).search_count([
                 ('page_id', '=', '555555555555555')]))  # not unlinked
 
     def test_reconcile_unselected_but_present_stays_active(self):
-        # A page the admin merely left unselected but that a fresh discovery
-        # still returns must not be deactivated. Only absence from the fresh
+        # Leaving a page unselected doesn't archive it; only disappearing from
         # discovery does.
         acc = self._make_account()
         existing = self.env['meta.page'].create({
@@ -299,15 +280,14 @@ class TestOnboarding(TransactionCase):
         wizard = self.env['meta.onboarding'].create({
             'app_id': '100000000000001', 'app_secret': 'SECRET_APP',
             'access_token': 'USER_TOKEN'})
-        # selected set deliberately EXCLUDES 111... (unselected) but it is still
-        # present in the fresh discovery.
+        # 111... is left out of the selection but is still discovered.
         wizard._reconcile_pages(acc, discovered,
                                 selected_ids={'444444444444444'})
         self.assertTrue(existing.active)
 
     def test_account_identity_uses_token_owner_not_app_id(self):
-        # Account identity keys off the token owner (user_id), not the app_id.
-        # Two SUT tokens under the same app -> two distinct accounts.
+        # The account is keyed on the token owner (user_id), not app_id, so two
+        # system user tokens under one app give two accounts.
         owner1 = _load_json('debug_token_valid_sut.json')['data']
         owner2 = _load_json('debug_token_valid_sut_owner2.json')['data']
         wizard = self.env['meta.onboarding']
@@ -318,7 +298,6 @@ class TestOnboarding(TransactionCase):
         self.assertEqual(acc2.account_id, '777000000000002')
         self.assertEqual(acc1.app_id, '100000000000001')
         self.assertEqual(acc2.app_id, '100000000000001')
-        # the app id must NEVER be used as the account identity.
         self.assertFalse(self.env['meta.account'].search([
             ('account_id', '=', '100000000000001')]))
 

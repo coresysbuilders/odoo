@@ -6,20 +6,13 @@
 
 """Tests for the new-lead notification setting.
 
-A fresh Meta lead notifies either one configured user or every active member
-of a configured group. The notification:
-  - is off by default,
-  - fires only on the create path (never on a dedup/enrich match or an
-    idempotent skip),
-  - excludes inactive group members,
-  - and never breaks ingestion if it fails.
+A new Meta lead notifies one user or every active member of a group. It is
+off by default, only fires when a lead is created (not on a dedup match or
+an idempotent skip), and a failure in it never breaks ingestion.
 
-Delivery is to the recipients' Odoo INBOX (a ``user_notification`` message +
-``inbox`` mail.notification rows), independent of each recipient's email-vs-
-inbox preference and of outgoing email (SMTP) availability — an operational
-alert must not vanish when a recipient prefers email and the mail server is
-down. The tests therefore assert on the real inbox notifications, not on a
-mocked message_notify.
+Alerts go straight to the Odoo inbox whatever the user's email preference,
+so they still arrive when SMTP is down. The tests check the real inbox
+notifications rather than mocking message_notify.
 """
 from unittest import mock
 
@@ -50,9 +43,8 @@ class TestLeadNotify(IngestFixtureMixin, TransactionCase):
             'name': 'Notify B', 'login': 'notify_b',
             'groups_id': [(4, self.group.id)],
         })
-        # Recipients prefer EMAIL — the exact production scenario that, under
-        # message_notify, would route to a (failing) SMTP send and never reach
-        # the inbox. The inbox-direct delivery must reach them regardless.
+        # With an email preference, message_notify would send mail instead
+        # of using the inbox; the alert must reach the inbox anyway.
         (self.user_a + self.user_b).write({'notification_type': 'email'})
 
     def _enable(self, target_type='user', user=None, group=None):
@@ -62,7 +54,7 @@ class TestLeadNotify(IngestFixtureMixin, TransactionCase):
         self.ICP.set_param(NOTIFY_GROUP_PARAM, str(group.id) if group else '')
 
     def _inbox_recipients(self, lead):
-        """Partner ids that received an INBOX alert notification for ``lead``."""
+        """Partner ids that got an inbox alert for ``lead``."""
         notifs = self.env['mail.notification'].search([
             ('mail_message_id.model', '=', 'crm.lead'),
             ('mail_message_id.res_id', '=', lead.id),
@@ -85,14 +77,13 @@ class TestLeadNotify(IngestFixtureMixin, TransactionCase):
         self.assertFalse(self._inbox_recipients(lead))
 
     def test_user_target_notifies_that_user_inbox(self):
-        """A 'specific user' target posts an inbox alert to that user's partner,
-        as an inbox notification even though the user prefers email."""
+        """A user target gets an inbox alert even though they prefer email."""
         self._enable('user', user=self.user_a)
         with self._patch_graph():
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
         self.assertEqual(
             self._inbox_recipients(lead), {self.user_a.partner_id.id})
-        # No email notification (and so no dependency on SMTP) was produced.
+        # And no email notification, so nothing depends on SMTP.
         email_notifs = self.env['mail.notification'].search([
             ('mail_message_id', 'in', self._alert_messages(lead).ids),
             ('notification_type', '=', 'email'),
@@ -100,7 +91,7 @@ class TestLeadNotify(IngestFixtureMixin, TransactionCase):
         self.assertFalse(email_notifs)
 
     def test_group_target_notifies_all_active_members_inbox(self):
-        """A 'role/group' target posts an inbox alert to every active member."""
+        """A group target alerts every active member."""
         self._enable('group', group=self.group)
         with self._patch_graph():
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
@@ -125,12 +116,10 @@ class TestLeadNotify(IngestFixtureMixin, TransactionCase):
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
             self.assertEqual(len(self._alert_messages(lead)), 1)
             self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')  # skip
-        # The skip added no second alert message.
         self.assertEqual(len(self._alert_messages(lead)), 1)
 
     def test_dedup_match_does_not_notify(self):
-        """An incoming lead that links to an existing lead by email enriches it
-        (match path) and must NOT notify — only brand-new leads notify."""
+        """A lead that matches an existing one by email does not notify."""
         self._enable('user', user=self.user_a)
         self.Lead.create({'name': 'Existing', 'email_from': 'jane@example.com'})
         with self._patch_graph():

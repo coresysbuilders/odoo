@@ -6,13 +6,9 @@
 
 """Tests for meta.graph.client.
 
-Drives a mocked Session against real-shaped JSON fixtures to cover typed-
-exception classification, token redaction and no-mutation of caller params,
-path validation, and the static scan that guards against a hardcoded Graph
-URL/version anywhere in the addon.
-
-Note: assertRaises takes a single exception class, never a tuple — Odoo uses
-class-based tests with no conftest.
+A mocked Session returns real-shaped JSON fixtures. Covers error
+classification, token redaction, path validation, and a scan that keeps the
+Graph URL and version out of every file except const.py and the client.
 """
 import os
 import json
@@ -46,8 +42,8 @@ def _load_text(filename):
 def _make_response(status=200, body=None, headers=None, raw_text=None):
     """Build a fake requests.Response-like object.
 
-    .json() raises ValueError when raw_text is set or body is non-JSON, so the
-    client must translate that into a typed exception, never a raw ValueError.
+    With raw_text set, .json() raises ValueError like requests does on a
+    non-JSON body.
     """
     resp = mock.Mock()
     resp.status_code = status
@@ -69,12 +65,11 @@ class TestGraphClient(TransactionCase):
         return self.env['meta.graph.client']
 
     def _patched_session(self, response=None, side_effect=None):
-        """Patch the client's _get_session to return a Mock whose .request
-        yields the given response (or raises side_effect)."""
+        """Patch _get_session so its .request returns `response` or raises
+        `side_effect`."""
         client = self._client()
-        # Patch on the CLASS, not the recordset instance: Odoo recordsets reject
-        # setattr of a method (read-only), so patch.object(client, ...) raises
-        # AttributeError on Odoo 18.
+        # Patch the class: patch.object on a recordset raises AttributeError
+        # because recordsets don't allow setattr of a method.
         get_session = mock.patch.object(type(client), '_get_session').start()
         self.addCleanup(mock.patch.stopall)
         session = get_session.return_value
@@ -102,22 +97,20 @@ class TestGraphClient(TransactionCase):
         self.assertIs(s1, s2)
 
     def test_session_carries_no_auth_state(self):
-        """The reused Session must hold no Authorization header and no cookies:
-        the token rides per-request, never stuck on the Session."""
+        """The shared Session has no Authorization header and no cookies."""
         session = self._client()._get_session()
         self.assertNotIn('Authorization', session.headers)
         self.assertFalse(session.cookies)
 
     def test_token_not_stored_on_session(self):
-        """The token never sticks on the Session headers, and the client holds
-        no token attribute."""
+        """The token isn't kept on the Session or on the client."""
         client = self._client()
         session = client._get_session()
         self.assertNotIn('access_token', str(session.headers))
         self.assertFalse(hasattr(client, '_token'))
         self.assertFalse(hasattr(client, 'access_token'))
 
-    # ---- envelope -> typed exception classification ----------------------
+    # ---- error envelope classification ------------------------------------
 
     def test_envelope_maps_transient(self):
         client, session = self._patched_session(
@@ -148,46 +141,43 @@ class TestGraphClient(TransactionCase):
         self.assertEqual(cm.exception.retry_after_min, 19)
 
     def test_bare_429_is_ratelimit(self):
-        """A 429 with no dominant envelope code classifies as rate-limit."""
+        """A 429 with no error code in the body is a rate limit."""
         client, session = self._patched_session(
             _make_response(status=429, body={}))
         with self.assertRaises(MetaRateLimitError):
             client._request(_TOKEN, '123')
 
     def test_200_with_error_envelope_classifies_by_code(self):
-        """HTTP 200 + error code 190 -> MetaAuthError (the error envelope
-        dominates the 200 status)."""
+        """An error envelope wins over a 200 status: code 190 is an auth error."""
         client, session = self._patched_session(_make_response(
             status=200, body=_load_json('error_200_with_envelope.json')))
         with self.assertRaises(MetaAuthError):
             client._request(_TOKEN, '123')
 
     def test_is_transient_envelope_maps_transient(self):
-        """Non-5xx response with is_transient:true -> MetaTransientError."""
+        """is_transient true on a 4xx is still transient."""
         client, session = self._patched_session(_make_response(
             status=400, body=_load_json('error_transient_envelope.json')))
         with self.assertRaises(MetaTransientError):
             client._request(_TOKEN, '123')
 
     def test_non_json_5xx_is_transient(self):
-        """A 500 whose .json() raises ValueError -> MetaTransientError, never a
-        raw ValueError."""
+        """A 500 with an HTML body raises MetaTransientError, not ValueError."""
         client, session = self._patched_session(_make_response(
             status=500, raw_text=_load_text('error_html_500.txt')))
         with self.assertRaises(MetaTransientError):
             client._request(_TOKEN, '123')
 
     def test_invalid_json_200_is_permanent(self):
-        """A 200 whose .json() raises ValueError -> MetaPermanentError, never a
-        raw ValueError."""
+        """A 200 with a non-JSON body raises MetaPermanentError, not ValueError."""
         client, session = self._patched_session(_make_response(
             status=200, raw_text='not json at all'))
         with self.assertRaises(MetaPermanentError):
             client._request(_TOKEN, '123')
 
     def test_buc_malformed_header_keeps_raw_usage(self):
-        """A structurally-present-but-unparseable BUC header -> retry_after_min
-        is None BUT the raw buc_usage string is preserved."""
+        """An unparseable usage header gives no retry hint but keeps the raw
+        header text."""
         buc = json.dumps(_load_json('headers_buc_usage_malformed.json'))
         client, session = self._patched_session(_make_response(
             status=400, body=_load_json('error_ratelimit_80006.json'),
@@ -197,7 +187,7 @@ class TestGraphClient(TransactionCase):
         self.assertIsNone(cm.exception.retry_after_min)
         self.assertEqual(cm.exception.buc_usage, buc)
 
-    # ---- version sourced from const; no hardcode -------------------------
+    # ---- version comes from const ----------------------------------------
 
     def test_url_uses_const_version(self):
         client, session = self._patched_session(
@@ -208,7 +198,7 @@ class TestGraphClient(TransactionCase):
         url = args[1] if len(args) > 1 else kwargs.get('url')
         self.assertIn('/v99.0/', url)
 
-    # ---- cross: token redaction / no-mutation / path validation ----------
+    # ---- token redaction, caller params, path validation -----------------
 
     def test_token_redacted_in_logs(self):
         client, session = self._patched_session(
@@ -253,8 +243,8 @@ class TestGraphClient(TransactionCase):
         self.assertNotIn('access_token', p)
 
     def test_request_rejects_full_url_path(self):
-        """Callers cannot smuggle a full URL or query string to escape
-        GRAPH_BASE/GRAPH_VERSION."""
+        """A full URL, a query string or an empty path is refused, so callers
+        can't escape the pinned base URL and version."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'X'}))
         with self.assertRaises(MetaPermanentError):
@@ -265,22 +255,21 @@ class TestGraphClient(TransactionCase):
             client._request(_TOKEN, '')
 
     def test_request_rejects_path_traversal(self):
-        """Dot-segment and percent-encoded traversal are rejected, so a stored
-        or payload id cannot normalize off the pinned /vXX.0 version."""
+        """Dot segments, plain or percent-encoded, are refused so an id from a
+        payload can't step off the pinned version."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'X'}))
         for bad in ('../../debug_token', '..%2f..%2fdebug_token',
                     '123/../../me', '%2e%2e/leads'):
             with self.assertRaises(MetaPermanentError):
                 client._request(_TOKEN, bad)
-        # The blocked traversal never reached the transport.
         session.request.assert_not_called()
 
-    # ---- appsecret_proof + inject_token kwarg ----------------------------
+    # ---- appsecret_proof and inject_token -----------------------------------
 
     def test_appsecret_proof_injected_when_app_secret_passed(self):
-        """appsecret_proof is the HMAC-SHA256 of the SENT token keyed by the
-        App Secret."""
+        """appsecret_proof is HMAC-SHA256 of the sent token, keyed by the App
+        Secret."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'X'}))
         client._request('TOKEN', 'me', params={}, app_secret='SECRET')
@@ -289,8 +278,7 @@ class TestGraphClient(TransactionCase):
         self.assertEqual(params['appsecret_proof'], expected)
 
     def test_appsecret_proof_absent_when_no_app_secret(self):
-        """No app_secret -> no appsecret_proof, so plain callers are
-        unaffected."""
+        """Without app_secret no appsecret_proof is sent."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'X'}))
         client._request('TOKEN', 'me', params={})
@@ -298,8 +286,7 @@ class TestGraphClient(TransactionCase):
                          session.request.call_args.kwargs['params'])
 
     def test_appsecret_proof_uses_per_call_token(self):
-        """The proof is computed per-call from the token actually sent — two
-        different tokens yield two different proofs."""
+        """The proof is computed from each call's own token."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'X'}))
         client._request('TOKEN_ONE', 'me', params={}, app_secret='SECRET')
@@ -313,8 +300,7 @@ class TestGraphClient(TransactionCase):
             proof_two, hmac.new(b'SECRET', b'TOKEN_TWO', hashlib.sha256).hexdigest())
 
     def test_resolve_name_miss_sends_appsecret_proof(self):
-        """A cache-miss name resolve threads app_secret through, so the
-        appsecret_proof is present for name lookups too."""
+        """Name lookups that miss the cache also send appsecret_proof."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'Resolved'}))
         name = client.resolve_name('TOKEN', 'campaign', 'C9',
@@ -326,21 +312,20 @@ class TestGraphClient(TransactionCase):
             hmac.new(b'SECRET', b'TOKEN', hashlib.sha256).hexdigest())
 
     def test_iter_paged_stops_on_repeated_cursor(self):
-        """A Graph response repeating the same 'after' cursor must not loop
-        forever — iteration halts once a cursor is seen again."""
+        """Paging stops when Graph hands back an 'after' cursor it already
+        gave."""
         client = self._client()
         body = {'data': [{'id': '1'}],
                 'paging': {'cursors': {'after': 'SAME'}}}
         with mock.patch.object(type(client), '_request',
                                return_value=body) as req:
             items = list(client._iter_paged('TOKEN', 'F1/leads'))
-        # First page yields, second page repeats the cursor -> stop. Two
-        # _request calls at most, never an unbounded loop.
+        # Page one, then a repeated cursor on page two, then stop.
         self.assertEqual(len(items), 2)
         self.assertEqual(req.call_count, 2)
 
     def test_request_inject_token_default_true(self):
-        """Default inject_token=True attaches the access_token param."""
+        """access_token is sent by default."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'X'}))
         client._request('TOKEN', 'me', params={})
@@ -348,8 +333,8 @@ class TestGraphClient(TransactionCase):
             session.request.call_args.kwargs['params']['access_token'], 'TOKEN')
 
     def test_request_inject_token_false_omits_access_token(self):
-        """inject_token=False omits access_token — needed for the tokenless
-        OAuth exchange endpoint."""
+        """inject_token=False leaves access_token out, as the OAuth exchange
+        endpoint needs."""
         client, session = self._patched_session(
             _make_response(200, {'name': 'X'}))
         client._request('TOKEN', 'oauth/access_token',
@@ -357,13 +342,11 @@ class TestGraphClient(TransactionCase):
         self.assertNotIn('access_token',
                          session.request.call_args.kwargs['params'])
 
-    # ---- static single-URL/version scan ----------------------------------
+    # ---- no hardcoded Graph URL or version ---------------------------------
 
     def test_no_hardcoded_graph_url_or_version(self):
-        """Walk the addon's .py/.xml/.csv; SKIP tests/, const.py and
-        meta_graph_client.py; fail if any forbidden URL/version token leaks
-        elsewhere. Mechanically enforces that the URL and version live in one
-        place only."""
+        """Only const.py and meta_graph_client.py may mention the Graph URL or
+        version. Scans .py/.xml/.csv outside tests/."""
         addon_root = os.path.dirname(os.path.dirname(__file__))
         forbidden = ('graph.facebook.com', 'https://graph', '/v23.0', 'GRAPH_VERSION')
         allow_basenames = {'const.py', 'meta_graph_client.py'}
@@ -384,4 +367,4 @@ class TestGraphClient(TransactionCase):
                 for needle in forbidden:
                     if needle in text:
                         offenders.append('%s contains %r' % (fpath, needle))
-        self.assertFalse(offenders, 'SC#4 leak(s): %s' % offenders)
+        self.assertFalse(offenders, 'token leaked into: %s' % offenders)

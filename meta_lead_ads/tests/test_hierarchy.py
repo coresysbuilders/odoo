@@ -12,7 +12,6 @@ from odoo.tools import mute_logger
 @tagged('post_install', '-at_install')
 class TestHierarchy(TransactionCase):
     def test_create_hierarchy(self):
-        # multi-account / multi-page / multi-form chain
         acc = self.env['meta.account'].create({'name': 'Acc A', 'account_id': 'A1'})
         acc2 = self.env['meta.account'].create({'name': 'Acc B', 'account_id': 'A2'})
         page = self.env['meta.page'].create({'name': 'Page 1', 'page_id': 'P1', 'account_id': acc.id})
@@ -38,13 +37,11 @@ class TestHierarchy(TransactionCase):
         acc = self.env['meta.account'].create({'name': 'X', 'account_id': 'A'})
         acc2 = self.env['meta.account'].create({'name': 'X2', 'account_id': 'A2'})
         self.env['meta.page'].create({'name': 'P', 'page_id': 'DUP', 'account_id': acc.id})
-        # same parent -> rejected
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'):
             with self.env.cr.savepoint():
                 self.env['meta.page'].create({'name': 'P2', 'page_id': 'DUP', 'account_id': acc.id})
-        # DIFFERENT parent, same page_id -> STILL rejected (proves GLOBAL
-        # uniqueness; would PASS under a composite unique(account_id, page_id),
-        # so it must be asserted explicitly)
+        # Also rejected under another account: page_id is globally unique,
+        # not unique per account.
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'):
             with self.env.cr.savepoint():
                 self.env['meta.page'].create({'name': 'P3', 'page_id': 'DUP', 'account_id': acc2.id})
@@ -54,21 +51,17 @@ class TestHierarchy(TransactionCase):
         page = self.env['meta.page'].create({'name': 'P', 'page_id': 'P1', 'account_id': acc.id})
         page2 = self.env['meta.page'].create({'name': 'P2', 'page_id': 'P2', 'account_id': acc.id})
         self.env['meta.lead.form'].create({'name': 'F', 'form_id': 'DUP', 'page_id': page.id})
-        # same parent -> rejected
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'):
             with self.env.cr.savepoint():
                 self.env['meta.lead.form'].create({'name': 'F2', 'form_id': 'DUP', 'page_id': page.id})
-        # DIFFERENT parent, same form_id -> STILL rejected (proves GLOBAL
-        # uniqueness)
+        # form_id is globally unique too.
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'):
             with self.env.cr.savepoint():
                 self.env['meta.lead.form'].create({'name': 'F3', 'form_id': 'DUP', 'page_id': page2.id})
 
     def test_required_fields(self):
-        # required=True on account_id maps to a DB NOT NULL, enforced as a
-        # psycopg2 IntegrityError. Odoo's TransactionCase.assertRaises accepts
-        # a single exception class only (it calls issubclass on the arg), so a
-        # tuple cannot be used here — match the sibling uniqueness tests.
+        # required=True becomes NOT NULL in the database, so this is an
+        # IntegrityError rather than a ValidationError.
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'):
             with self.env.cr.savepoint():
                 self.env['meta.account'].create({'name': 'NoId'})

@@ -16,10 +16,10 @@ _logger = logging.getLogger(__name__)
 
 
 def post_init_hook(env):
-    """Stamp the install time and remind the admin to confirm the scheduler.
-    Automatic lead sync only works if Odoo's cron worker is running, so the
-    Meta Account form shows a live 'Scheduler' status the admin should check
-    right after installing."""
+    """Record the install time and remind the admin to check the scheduler.
+
+    Automatic lead sync needs Odoo's cron worker, so the Meta Account form
+    shows a 'Scheduler' status worth checking right after install."""
     env['ir.config_parameter'].set_param(
         'meta_lead_ads.installed_at', fields.Datetime.to_string(fields.Datetime.now()))
     _logger.info(
