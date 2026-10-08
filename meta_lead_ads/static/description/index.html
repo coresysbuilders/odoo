@@ -107,6 +107,56 @@
     <p style="margin:0;font-size:15px;color:#5c5436;line-height:1.6;">Before going live, Meta requires App Review with Advanced Access for <code>leads_retrieval</code> (plus <code>pages_show_list</code>, <code>pages_manage_metadata</code> and <code>pages_read_engagement</code>) and Business Verification. An app in Development Mode returns test leads only, so it's worth starting the review early.</p>
   </div>
 
+  <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">FAQ</h2>
+  <p style="margin:12px 0 14px;color:#5a616a;font-size:15px;">Click a question to show the answer.</p>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Does it capture production leads from both Facebook and Instagram Lead Ads?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Yes. Lead ads running on Facebook and on Instagram (feed, stories, reels and other placements) are captured. Instagram lead ads use the instant form of the Facebook Page they are published from, so they arrive through that Page's connection, and each lead records whether it came from Facebook or Instagram.</p>
+      <p style="margin:0 0 12px;">For production, your Meta app needs Advanced Access for <code>leads_retrieval</code> (plus <code>pages_show_list</code>, <code>pages_manage_metadata</code> and <code>pages_read_engagement</code>) and Business Verification; until then Meta only delivers test leads. Each Instagram account must be linked to a Facebook Page connected in the module.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">How quickly does a new lead appear in Odoo CRM?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Typically within 1&ndash;2 minutes with the standard configuration. Meta notifies Odoo through a webhook the moment a form is submitted, and a scheduled job turns new submissions into CRM leads every minute. As a safety net, a backfill job re-checks every form every 15 minutes (adjustable), so a missed notification still arrives.</p>
+      <p style="margin:0 0 12px;">This needs a publicly reachable HTTPS URL for your Odoo and Odoo's scheduled jobs running, which is standard on Odoo.sh and correctly configured on-premise servers.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can form answers be mapped to standard and custom CRM fields?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Yes. Name, email, phone and company name are filled in automatically. Any other question can be mapped, per form, to a standard or custom lead field: text, selection, checkbox, number, amount, date, or a link to existing records such as a country (by name or ISO code) or tags. The same field can be filled from several forms, and any captured question can be turned into a new custom field in one click from the lead.</p>
+      <p style="margin:0 0 12px;">An answer that doesn't fit its field, such as an unknown option, is kept on the lead as a Meta answer rather than guessed, so nothing is lost.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Are campaign, ad set, ad, form and submission time stored for reporting?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Yes. Every lead stores the campaign, ad set, ad, form and Page names and IDs, the platform, and the exact date and time of submission. The campaign is also mapped to Odoo's standard UTM source, medium and campaign. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys (platform, campaign, ad set, ad, form, submission day) for list, pivot and graph reports, alongside the built-in analytics dashboard.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Does it need other paid apps, services or Python packages?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">No paid apps: it uses only Odoo's standard CRM, UTM and Discuss modules and works on Community and Enterprise. No extra Python packages: it uses the <code>requests</code> library bundled with Odoo.</p>
+      <p style="margin:0 0 12px;">You do need a Meta developer app and Business Manager account (free), the Meta review steps above, and a public HTTPS address for the webhook. Hosting must be Odoo.sh or on-premise, as Odoo Online does not allow third-party apps.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">What happens when Meta changes or retires its API?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">The module talks to Meta through a single pinned Graph API version (currently v23.0), so moving to a newer version is a contained change that we test against the Lead Ads fields before release. Compatibility updates for your purchased version are published through the Odoo Apps Store at no extra cost for as long as Meta supports the Lead Ads API.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">What support is included?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Your purchase includes email support at <a href="mailto:info@coresysbuilders.com" style="color:#1f4e79;">info@coresysbuilders.com</a> for installation questions and bug fixes, and a step-by-step setup guide built into the module (<b>Settings &rarr; Meta Lead Ads &rarr; Setup guide</b>) covering the Meta app, permissions, App Review, the webhook and Page subscription.</p>
+      <p style="margin:0 0 12px;">Hands-on help configuring your Meta Business account and webhook, or deploying to production, is available as a paid service. Meta's own review steps (App Review and Business Verification) are completed in your Meta account, and their timing is set by Meta.</p>
+    </div>
+  </details>
+
   <hr style="border:0;border-top:1px solid #e6e9ec;margin:36px 0 18px;"/>
   <p style="font-size:13.5px;color:#80878f;line-height:1.6;"><b style="color:#5a616a;">CoreSys Builders.</b> &copy; 2026, all rights reserved. Licensed under the Odoo Proprietary License v1.0 (OPL-1); redistribution and resale are not permitted. Questions and feature requests are welcome.</p>
 

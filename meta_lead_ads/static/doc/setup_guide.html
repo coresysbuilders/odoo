@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<!--
+    Meta Lead Ads Integration for Odoo (c) 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meta Lead Ads Setup Guide</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #23282e;
+         font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         font-size: 16px; line-height: 1.65; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 18px 48px; }
+  h1 { font-size: 28px; line-height: 1.2; color: #15191e; margin: 12px 0 6px; }
+  h2 { font-size: 21px; color: #15191e; margin: 38px 0 6px; padding-bottom: 7px;
+       border-bottom: 1px solid #e6e9ec; }
+  h3 { font-size: 17px; color: #1b2027; margin: 24px 0 6px; }
+  .lead { font-size: 18px; color: #444b53; }
+  .rule { width: 54px; height: 3px; background: #1f4e79; border-radius: 2px; margin: 14px 0 18px; }
+  code { background: #f2f4f6; border-radius: 3px; padding: 1px 5px; font-size: 14px; }
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 15px; }
+  th, td { border: 1px solid #e3e6ea; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f6f7f9; }
+  li { margin: 4px 0; }
+  .note { border-left: 3px solid #c9a227; background: #fbf8ef; padding: 12px 16px;
+          margin: 16px 0; border-radius: 0 4px 4px 0; color: #5c5436; }
+  .tip { border-left: 3px solid #1f4e79; background: #f2f6fa; padding: 12px 16px;
+         margin: 16px 0; border-radius: 0 4px 4px 0; }
+  footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e6e9ec;
+           font-size: 13.5px; color: #80878f; }
+  @media (max-width: 600px) { table { font-size: 14px; } th, td { padding: 6px; } }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Connecting Odoo to Meta</h1>
+<div class="rule"></div>
+<p class="lead">A step-by-step guide to the <b>Connect to Meta</b> wizard
+(<i>Settings &rarr; Meta Lead Ads &rarr; Connect to Meta</i>) and where each
+credential comes from in Meta.</p>
+
+<p>The wizard's first screen asks for three things:</p>
+<table>
+  <tr><th>Wizard field</th><th>What it is</th><th>Where it comes from</th></tr>
+  <tr><td><b>App</b></td><td>Your Meta App <b>ID</b> (a number)</td><td>Meta for Developers &rarr; App settings &rarr; Basic</td></tr>
+  <tr><td><b>App Secret</b></td><td>Your Meta App <b>secret</b></td><td>Meta for Developers &rarr; App settings &rarr; Basic</td></tr>
+  <tr><td><b>Token</b></td><td>An access token</td><td>Business Settings &rarr; System Users (recommended)</td></tr>
+</table>
+<p>The App ID and secret live in the <b>Meta for Developers</b> dashboard; the
+token comes from your <b>Business Settings</b>. They are two different places.</p>
+
+<h2>1. App ID and App Secret</h2>
+<ol>
+  <li>Go to <b>https://developers.facebook.com</b> &rarr; <b>My Apps</b>. If you
+      don't have an app yet, click <b>Create App</b> and choose the
+      <b>Business</b> type.</li>
+  <li>Open your app and go to <b>App settings &rarr; Basic</b> in the left menu.</li>
+  <li>Copy the <b>App ID</b> shown at the top and paste it into the wizard's
+      <b>App</b> field.</li>
+  <li>Next to it, click <b>Show</b> on the <b>App secret</b> (Meta asks for your
+      password) and paste it into the wizard's <b>App Secret</b> field.</li>
+</ol>
+<p>While you are here, add the <b>Webhooks</b> product to the app (left menu
+&rarr; <b>Add Product &rarr; Webhooks</b>). You will need it for the leadgen
+subscription at the end.</p>
+
+<h2>2. Access token</h2>
+<p>A <b>System User token</b> is recommended because it is long-lived and not
+tied to a personal login.</p>
+<ol>
+  <li>Go to <b>https://business.facebook.com</b> &rarr; <b>Business settings</b>
+      (the gear).</li>
+  <li>Open <b>Users &rarr; System Users</b>, then create one (or select an
+      existing one) and give it the <b>Admin</b> or <b>Employee</b> role.</li>
+  <li>Click <b>Add Assets</b> and assign your <b>Page(s)</b>, with full control /
+      manage leads, and your <b>App</b> from step 1.</li>
+  <li>Click <b>Generate new token</b>, choose your <b>App</b>, and select these
+      permissions: <code>leads_retrieval</code>, <code>pages_show_list</code>,
+      <code>pages_read_engagement</code>, <code>pages_manage_metadata</code>.</li>
+  <li>Choose an expiration (<b>60 days</b> or <b>Never</b>), generate the token,
+      and <b>copy it immediately</b>: Meta only shows it once.</li>
+  <li>Paste it into the wizard's <b>Token</b> field and leave <i>"This is a
+      short-lived User token (exchange it)"</i> <b>unchecked</b>.</li>
+</ol>
+
+<h3>Quick alternative: a short-lived token</h3>
+<p>For a quick test you can take a temporary token from the <b>Graph API
+Explorer</b> (<b>https://developers.facebook.com/tools/explorer</b>): select
+your app, add the four permissions above and click <b>Generate Access
+Token</b>. This token expires in about 1&ndash;2 hours, so in the wizard
+<b>tick</b> <i>"This is a short-lived User token (exchange it)"</i> and the
+module exchanges it for a long-lived one automatically.</p>
+
+<h2>3. Keep everything under the same Business</h2>
+<p>The app and the Page must belong to the <b>same Business</b>. In <b>Business
+settings &rarr; Accounts</b> you should see both your <b>Pages</b> and your
+<b>App</b>; add or claim them if they are missing. The token's System User must
+have both assigned to it (step 2.3).</p>
+
+<h2>4. Development mode vs. real leads</h2>
+<p>While the app is in <b>Development mode</b>, <code>leads_retrieval</code>
+only returns <b>test leads</b>. Real production leads require:</p>
+<ul>
+  <li><b>App Review &rarr; Advanced Access</b> for <code>leads_retrieval</code>
+      (plus <code>pages_show_list</code>, <code>pages_manage_metadata</code> and
+      <code>pages_read_engagement</code>), and</li>
+  <li><b>Business Verification</b>.</li>
+</ul>
+<div class="note">This is a separate Meta approval process and it takes time,
+so start it early. The wizard still validates the token and imports your Pages
+and Forms before approval; it simply shows a <b>"Development mode, test leads
+only"</b> status until Advanced Access is granted.</div>
+
+<h2>5. Finish in the wizard</h2>
+<ol>
+  <li>Click <b>Validate &amp; Discover</b>. The wizard checks the token and lists
+      your Pages.</li>
+  <li>Select the Pages to sync and continue; the wizard finds their Lead Forms
+      for review.</li>
+  <li>Click <b>Finish</b>. The wizard then shows a <b>Webhook URL</b> and a
+      <b>Verify Token</b> (visible to Meta Admins only). Keep this screen open:
+      you paste both values into your Meta app in the next step.</li>
+</ol>
+
+<h2>6. Set up the webhook in your Meta app</h2>
+<p>A leadgen webhook has <b>two</b> parts, and you need both:</p>
+<ul>
+  <li><b>App level</b>: tell Meta <i>where</i> to send events (your Odoo callback
+      URL) and which field (<code>leadgen</code>). You do this <b>once</b>, by
+      hand, in the App dashboard (below).</li>
+  <li><b>Page level</b>: subscribe the app to each Page's leads. <b>The Odoo
+      wizard does this for you</b> when you click <b>Subscribe</b>.</li>
+</ul>
+<p>The webhook setting lives in the <b>Meta for Developers</b> App dashboard
+(<b>developers.facebook.com</b>), not in Business Suite or Business Settings,
+and on most apps <b>Webhooks</b> is a product you must add before it appears in
+the menu.</p>
+<ol>
+  <li>Go to <b>https://developers.facebook.com &rarr; My Apps</b> and open your
+      app.</li>
+  <li>In the <b>left sidebar</b>, look for <b>Webhooks</b> under
+      <i>Products</i>. If it isn't there, click <b>Add Product</b> at the bottom
+      of the sidebar (or the <i>"Add products to your app"</i> card), find
+      <b>Webhooks</b> and click <b>Set up</b>.</li>
+  <li>Open <b>Webhooks</b>. At the top, change the <b>object dropdown</b> (it
+      often defaults to <i>User</i>) to <b>Page</b>, then click <b>Subscribe to
+      this object</b>.</li>
+  <li>In the dialog, paste the two values from the wizard's final screen:
+      <b>Callback URL</b> = the Webhook URL
+      (<code>https://&lt;your-odoo-domain&gt;/meta_lead_ads/webhook</code>), and
+      <b>Verify Token</b> = the Verify Token.</li>
+  <li>Click <b>Verify and Save</b>. Meta calls that URL straight away to confirm
+      it, so your Odoo must be reachable over <b>public HTTPS</b>.</li>
+  <li>In the <b>Page</b> object's field list, find <code>leadgen</code> and click
+      <b>Subscribe</b>.</li>
+</ol>
+<p>Then, back in the Odoo wizard, click <b>Subscribe</b> to complete the page
+level.</p>
+<div class="tip"><b>Can't find Webhooks at all?</b> Make sure you are on
+<b>developers.facebook.com</b> (the App dashboard), not
+<b>business.facebook.com</b> (Business Suite), and that the app is a
+<b>Business</b>-type app.</div>
+<p>Once both parts are in place, new lead submissions arrive in <b>CRM &rarr;
+Leads</b> within a minute or two, and the backfill job picks up anything the
+webhook misses.</p>
+
+<h2>Finding the webhook URL and verify token later</h2>
+<p>The wizard's final screen disappears once you close it, but the values are
+not lost: the verify token is stored permanently and the callback URL is
+fixed.</p>
+<ol>
+  <li>Turn on developer mode: <b>Settings &rarr; General Settings</b>, scroll to
+      the bottom, <b>Activate the developer mode</b>.</li>
+  <li>Go to <b>Settings &rarr; Technical &rarr; Parameters &rarr; System
+      Parameters</b>.</li>
+  <li><b>Verify Token</b>: search for
+      <code>meta_lead_ads.webhook_verify_token</code>; its <b>Value</b> is your
+      verify token. It is generated once and never changes.</li>
+  <li><b>Callback URL</b>: always <code>&lt;web.base.url&gt;/meta_lead_ads/webhook</code>.
+      Look up the key <code>web.base.url</code> in the same list and append
+      <code>/meta_lead_ads/webhook</code>.</li>
+</ol>
+<p>Alternatively, re-open <b>Settings &rarr; Meta Lead Ads &rarr; Connect to
+Meta</b> and run it through to <b>Finish</b> again. It reuses the same verify
+token and shows both values again, so a webhook you already configured in Meta
+stays valid.</p>
+
+<h2>Troubleshooting</h2>
+<ul>
+  <li><b>"That token is invalid or expired."</b> The token was mistyped, has
+      expired, or lacks the required permissions. Generate a fresh System User
+      token with the four permissions listed above.</li>
+  <li><b>"Meta did not return a token owner id."</b> Use a <b>System User</b>
+      token (Business Manager), not a plain app or page token.</li>
+  <li><b>Status stays "Development mode, test leads only."</b> The token is
+      valid but <code>leads_retrieval</code> doesn't have Advanced Access yet;
+      complete App Review and Business Verification.</li>
+  <li><b>No leads arriving.</b> First check the <b>Scheduler</b> status on the
+      Meta account form (Settings &rarr; Meta Lead Ads &rarr; <b>Open
+      Accounts</b>, open an account, or click <b>Check Scheduler</b>). Leads only
+      sync if Odoo's scheduler runs the jobs; if it shows <i>Not running</i>,
+      the server needs <code>db_name</code> set (a <code>dbfilter</code> alone is
+      not enough), <code>max_cron_threads</code> above 0 and no
+      <code>--no-cron</code>, then a restart. If the scheduler is healthy,
+      confirm the Page is subscribed to <code>leadgen</code> (wizard
+      <b>Subscribe</b> button) and that the Webhook URL is reachable from the
+      internet over HTTPS.</li>
+</ul>
+
+<footer><b>CoreSys Builders.</b> Questions: info@coresysbuilders.com</footer>
+</main>
+</body>
+</html>
