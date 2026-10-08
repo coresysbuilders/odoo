@@ -33,6 +33,13 @@
                             <button name="%(meta_onboarding_action)d" type="action"
                                     string="Connect to Meta" class="btn-primary"/>
                         </setting>
+                        <setting string="Setup guide"
+                                 help="Step-by-step instructions for the Meta app, token, permissions, App Review and webhook.">
+                            <a href="/meta_lead_ads/static/doc/setup_guide.html" target="_blank" role="button"
+                               class="btn btn-link px-0">
+                                <i class="fa fa-book me-1"/>Open setup guide
+                            </a>
+                        </setting>
                         <setting string="Connection status"
                                  help="Best-of status across active Meta accounts. Token-free — never shows the App Secret or access token.">
                             <field name="meta_connection_status" widget="badge" readonly="1"
