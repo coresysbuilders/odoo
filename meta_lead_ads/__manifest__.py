@@ -6,7 +6,7 @@
 
 {
     'name': 'Facebook Lead Ads to CRM',
-    'version': '18.0.13.4.0',
+    'version': '18.0.13.4.1',
     'category': 'Sales/CRM',
     'license': 'OPL-1',
     'summary': 'Bring Facebook & Instagram Lead Ads straight into Odoo CRM. A '
