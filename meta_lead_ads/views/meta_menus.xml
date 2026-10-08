@@ -5,10 +5,8 @@
     redistribution, or resale, in whole or in part, via any medium, is prohibited.
 -->
 <odoo>
-    <!-- The two CRM-config menuitems are removed in favour of the single Settings
-         home. The act_window actions below are kept — the Settings hub buttons
-         reuse them. The existing DB menu rows are unlinked on upgrade by the
-         explicit ir.ui.menu delete records in views/meta_settings_menu.xml. -->
+    <!-- These actions no longer have CRM menu entries; the Settings page
+         buttons open them. The old menus are deleted in meta_settings_menu.xml. -->
     <record id="meta_account_action" model="ir.actions.act_window">
         <field name="name">Meta Accounts</field>
         <field name="res_model">meta.account</field>

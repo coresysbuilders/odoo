@@ -4,22 +4,11 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-"""Regression tests for the attribution / dedup / retention fixes.
+"""Regression tests for attribution, dedup and log retention fixes.
 
-One class per area:
-  * the cron backfill requests the FULL attribution field set (campaign /
-    ad-set / ad) so backfill-first leads no longer permanently lose attribution.
-  * crm.lead.meta_phone_normalized is a stored, indexed column computed by the
-    SAME normalizer the dedup lookup uses (indexed '=' instead of a full-table
-    Python scan).
-  * _cron_vacuum_logs prunes old non-actionable terminal rows and KEEPS
-    failed/pending rows.
-  * _webhook_app_secret skips an empty-secret lowest-id account.
-  * _apply_utm builds the utm.campaign from the RESOLVED campaign name, not just
-    the raw payload name.
-
-Odoo 18 conventions used: patch on the CLASS (never a recordset), search_count
-(no count= kwarg), single-class assertRaises.
+Covers: backfill requesting the full attribution field set, the stored
+normalized-phone column used by dedup, sync log vacuuming, webhook app secret
+selection, and building utm.campaign from the resolved campaign name.
 """
 from unittest import mock
 
@@ -27,7 +16,7 @@ from odoo.tests.common import TransactionCase, tagged
 from odoo.exceptions import ValidationError
 
 
-class AuditFixtureMixin:
+class RegressionFixtureMixin:
     def setUp(self):
         super().setUp()
         self.account = self.env['meta.account'].create({
@@ -51,7 +40,7 @@ class AuditFixtureMixin:
 
 
 @tagged('post_install', '-at_install')
-class TestBackfillAttributionFields(AuditFixtureMixin, TransactionCase):
+class TestBackfillAttributionFields(RegressionFixtureMixin, TransactionCase):
     """The backfill Graph read requests the full attribution set."""
 
     def test_backfill_requests_full_attribution_fields(self):
@@ -68,15 +57,15 @@ class TestBackfillAttributionFields(AuditFixtureMixin, TransactionCase):
                                    {'name': 'x', 'type': 'lead'})):
             self.Form._cron_backfill()
         fields = captured.get('params', {}).get('fields', '')
-        # These MUST be requested, not just the
-        # id,created_time,ad_id,form_id,field_data,platform subset.
+        # Without these, a lead first seen by the backfill never gets
+        # campaign / ad set / ad attribution.
         for token in ('campaign_id', 'campaign_name', 'adset_id', 'adset_name',
                       'ad_name'):
             self.assertIn(token, fields)
 
 
 @tagged('post_install', '-at_install')
-class TestNormalizedPhoneColumn(AuditFixtureMixin, TransactionCase):
+class TestNormalizedPhoneColumn(RegressionFixtureMixin, TransactionCase):
     """Stored, indexed normalized-phone column drives dedup."""
 
     def test_normalized_phone_is_stored_and_matches_normalizer(self):
@@ -85,8 +74,8 @@ class TestNormalizedPhoneColumn(AuditFixtureMixin, TransactionCase):
         lead.flush_recordset()
         lead.invalidate_recordset(['meta_phone_normalized'])
         self.assertEqual(lead.meta_phone_normalized, '5551234567')
-        # An indexed '=' on the stored value finds the lead by the same key the
-        # dedup path computes for an incoming Meta phone.
+        # The dedup lookup normalizes the incoming phone the same way, so a
+        # plain '=' on the stored column finds the lead.
         norm = self.Ingest._normalize_phone('5551234567')
         found = self.Lead.search(
             [('meta_phone_normalized', '=', norm)], limit=1)
@@ -99,12 +88,11 @@ class TestNormalizedPhoneColumn(AuditFixtureMixin, TransactionCase):
 
 
 @tagged('post_install', '-at_install')
-class TestSyncLogVacuum(AuditFixtureMixin, TransactionCase):
+class TestSyncLogVacuum(RegressionFixtureMixin, TransactionCase):
     """Retention sweep prunes old non-actionable rows, keeps failed."""
 
     def _backdate(self, records, days):
-        # create_date is DB-managed; backdate it directly so the cutoff domain
-        # (which reads from SQL) sees the aged value.
+        # create_date is set by the ORM, so age it with SQL.
         self.env.cr.execute(
             "UPDATE meta_sync_log "
             "SET create_date = (now() AT TIME ZONE 'UTC') - %s * interval '1 day' "
@@ -122,12 +110,10 @@ class TestSyncLogVacuum(AuditFixtureMixin, TransactionCase):
 
         self.Log._cron_vacuum_logs()
 
-        # old non-actionable terminal rows pruned ...
         self.assertFalse(old_ok.exists())
         self.assertFalse(old_skip.exists())
-        # ... failed row KEPT (actionable / triage) ...
+        # Failed rows stay for triage.
         self.assertTrue(old_failed.exists())
-        # ... and a fresh success row inside the window is untouched.
         self.assertTrue(fresh_ok.exists())
 
     def test_vacuum_retention_zero_disables(self):
@@ -139,15 +125,13 @@ class TestSyncLogVacuum(AuditFixtureMixin, TransactionCase):
         self.assertTrue(old_ok.exists())
 
     def test_default_retention_is_14_days(self):
-        """The retention default is 14 days (feature: auto-clear after 14 days)."""
+        """Retention defaults to 14 days when no parameter is set."""
         self.env['ir.config_parameter'].sudo().search(
             [('key', '=', 'meta_lead_ads.sync_log_retention_days')]).unlink()
         self.assertEqual(self.Log._sync_log_retention_days(), 14)
 
     def test_vacuum_prunes_at_14_day_default(self):
-        """A non-actionable row aged 20 days (older than the new 14-day default,
-        younger than the former 90-day default) is pruned with no admin override
-        set; a failed row of the same age is still kept."""
+        """A 20-day-old success row is pruned under the default; a failed one is kept."""
         self.env['ir.config_parameter'].sudo().search(
             [('key', '=', 'meta_lead_ads.sync_log_retention_days')]).unlink()
         aged_ok = self.Log._record('LG_20D_OK', 'cron', 'success')
@@ -155,17 +139,16 @@ class TestSyncLogVacuum(AuditFixtureMixin, TransactionCase):
                                        error='boom')
         self._backdate(aged_ok + aged_failed, 20)
         self.Log._cron_vacuum_logs()
-        self.assertFalse(aged_ok.exists())     # pruned under 14-day default
-        self.assertTrue(aged_failed.exists())  # failed row always kept
+        self.assertFalse(aged_ok.exists())
+        self.assertTrue(aged_failed.exists())
 
 
 @tagged('post_install', '-at_install')
-class TestWebhookAppSecretSelection(AuditFixtureMixin, TransactionCase):
+class TestWebhookAppSecretSelection(RegressionFixtureMixin, TransactionCase):
     """An empty-secret lowest-id account does not shadow a configured one."""
 
     def test_empty_first_account_is_skipped(self):
-        # self.account (lowest id) already has 'secret_test'. Make a NEW lowest
-        # context: blank its secret and add a higher-id account WITH a secret.
+        # Blank the lowest-id account's secret and add a later one that has it.
         self.account.app_secret = False
         second = self.env['meta.account'].create({
             'name': 'Acct2', 'account_id': 'ACC2',
@@ -178,16 +161,15 @@ class TestWebhookAppSecretSelection(AuditFixtureMixin, TransactionCase):
 
 
 @tagged('post_install', '-at_install')
-class TestUtmFromResolvedCampaign(AuditFixtureMixin, TransactionCase):
-    """The utm.campaign is built from the resolved name when the payload omits
-    campaign_name but the campaign id resolved."""
+class TestUtmFromResolvedCampaign(RegressionFixtureMixin, TransactionCase):
+    """utm.campaign uses the resolved name when the payload has only the id."""
 
     def _fake_lead(self):
         return {
             'id': 'LG1', 'created_time': '2026-06-14T10:00:00+0000',
             'field_data': [{'name': 'email', 'values': ['z@example.com']}],
-            'campaign_id': 'C1',          # id present ...
-            'campaign_name': False,       # ... but NO payload name
+            'campaign_id': 'C1',
+            'campaign_name': False,       # id present, name missing
             'adset_id': 'A1', 'adset_name': 'Set',
             'ad_id': 'AD1', 'ad_name': 'Creative',
             'form_id': 'F1', 'platform': 'fb',
@@ -205,12 +187,11 @@ class TestUtmFromResolvedCampaign(AuditFixtureMixin, TransactionCase):
 
 
 @tagged('post_install', '-at_install')
-class TestFormIdValidation(AuditFixtureMixin, TransactionCase):
-    """A malformed Meta Form ID is rejected at write time (security L-03) so it
-    can never be persisted and then break every backfill sweep."""
+class TestFormIdValidation(RegressionFixtureMixin, TransactionCase):
+    """A malformed Form ID is rejected on save, so it can't break the backfill later."""
 
     def test_rejects_malformed_form_id_on_create(self):
-        # Each value carries a char the Graph bare-path guard would refuse.
+        # Each value has a character the Graph path guard would refuse.
         for bad in ('123/leads', 'a b', '..', 'id?x=1', 'id%2fx',
                     'http://x', 'a#b'):
             with self.assertRaises(ValidationError):

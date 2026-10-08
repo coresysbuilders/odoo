@@ -4,16 +4,12 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-"""Backfill ``meta_name_is_generated`` for Meta leads created before the title
-provenance flag existed.
+"""Set ``meta_name_is_generated`` on Meta leads created before the flag existed.
 
-Before this version every Meta lead title was the byte-exact DEFAULT render
-("Meta Lead • <form> • <date>"), so a Meta lead whose name STILL matches that
-default skeleton is provably a generated title and is flagged True (eligible for
-the retroactive rename). A name that no longer matches was manually edited and
-stays False, so the retro rename never clobbers it. This one-time skeleton match
-is accurate precisely because the configurable template did not exist before
-this version — every pre-existing generated title used the default shape.
+Before this version the title template was not configurable, so every
+generated title had the default shape. A lead whose name still matches it is
+flagged True and can be renamed later; anything else was edited by hand and
+stays False.
 """
 import logging
 import re
@@ -43,7 +39,7 @@ def migrate(cr, version):
                                     ('meta_name_is_generated', '=', False)])
     to_flag = leads.filtered(lambda lead: skeleton.match(lead.name or ''))
     if to_flag:
-        # write() does not clear the flag here (no 'name' key in vals).
+        # No 'name' in vals, so the write override leaves the flag alone.
         to_flag.write({'meta_name_is_generated': True})
     _logger.info(
         "meta_lead_ads: backfilled meta_name_is_generated on %s of %s "

@@ -5,20 +5,17 @@
     redistribution, or resale, in whole or in part, via any medium, is prohibited.
 -->
 <!--
-    QWeb template for the read-only Leads Analytics Dashboard (lives in the
-    web.assets_backend bundle, NOT the manifest data list).
-
-    Copy is the EXACT UI-SPEC Copywriting Contract. Status pills carry a text
-    label + glyph (never color-only). Icon-only controls carry aria-label.
-    Sync Log (Recent) + System Health are GLOBAL — a note marks them as not
-    period-scoped. Odoo 19 markup conventions: no <tree>, no attrs.
+    Leads Analytics Dashboard template. Loaded through web.assets_backend,
+    not the manifest data list. Status pills always show a text label, not
+    just a colour. Sync Log and System Health ignore the selected period, and
+    the page says so.
 -->
 <templates xml:space="preserve">
 
     <t t-name="meta_lead_ads.MetaLeadsDashboard">
         <div class="o_meta_dashboard" role="main">
 
-            <!-- ============ Header bar (logo + title + period + refresh) ======= -->
+            <!-- Header: logo, title, period selector, refresh -->
             <div class="o_meta_dash_header">
                 <div class="o_meta_dash_brand">
                     <img class="o_meta_dash_logo"
@@ -61,7 +58,7 @@
             </div>
             <div class="o_meta_dash_rule"/>
 
-            <!-- ============ Error state (token-free copy) ===================== -->
+            <!-- Error state: generic text, no backend error details -->
             <t t-if="state.error">
                 <div class="o_meta_dash_state o_meta_dash_error">
                     <h2>Couldn't load dashboard data</h2>
@@ -69,7 +66,7 @@
                 </div>
             </t>
 
-            <!-- ============ Loading skeleton ================================= -->
+            <!-- Loading skeleton -->
             <t t-elif="state.loading and !state.data">
                 <div class="o_meta_dash_state o_meta_dash_loading" aria-busy="true">
                     <div class="o_meta_skel o_meta_skel_kpis"/>
@@ -77,7 +74,7 @@
                 </div>
             </t>
 
-            <!-- ============ Loaded dashboard ================================= -->
+            <!-- Loaded dashboard -->
             <t t-else="">
 
                 <!-- KPI row (New / Synced / Failed) -->

@@ -5,11 +5,8 @@
     redistribution, or resale, in whole or in part, via any medium, is prohibited.
 -->
 <odoo>
-    <!-- Odoo 19 restructured access rights: res.groups no longer carries a
-         category_id. Groups are grouped on the user form by a res.groups.privilege
-         record, and the privilege is what links to the app's ir.module.category.
-         The ir.module.category is kept (it still anchors the "Meta" section); the
-         new privilege sits between it and the two groups. -->
+    <!-- Odoo 19: groups no longer have a category_id. They hang off a
+         res.groups.privilege, which in turn points to the module category. -->
     <record id="module_category_meta" model="ir.module.category">
         <field name="name">Meta</field>
         <field name="description">Meta Lead Ads integration access</field>
@@ -33,10 +30,8 @@
         <field name="implied_ids" eval="[(4, ref('group_meta_user'))]"/>
     </record>
 
-    <!-- The onboarding wizard records are transient and hold the App Secret and
-         access token mid-flow. Without a rule, any Meta Admin can read another
-         admin's in-progress wizard (and its credentials). Scope each admin to
-         the records they created. -->
+    <!-- Onboarding wizards hold the App Secret and token while in progress.
+         Without these rules one Meta Admin could read another's wizard. -->
     <record id="rule_meta_onboarding_own" model="ir.rule">
         <field name="name">Meta onboarding: own records only</field>
         <field name="model_id" ref="model_meta_onboarding"/>

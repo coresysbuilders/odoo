@@ -12,6 +12,7 @@
             <list editable="bottom">
                 <field name="meta_key"/>
                 <field name="crm_field_id"/>
+                <field name="crm_field_type"/>
                 <field name="form_id"/>
             </list>
         </field>
@@ -27,6 +28,7 @@
                         <field name="form_id"/>
                         <field name="meta_key"/>
                         <field name="crm_field_id"/>
+                        <field name="crm_field_type"/>
                     </group>
                 </sheet>
             </form>

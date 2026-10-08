@@ -5,9 +5,8 @@
     redistribution, or resale, in whole or in part, via any medium, is prohibited.
 -->
 <odoo>
-  <!-- Admin view for the durable webhook event queue. raw_payload carries a
-       field-level admin-only groups on the model, so it is automatically stripped
-       from a non-admin read and from this view — no view-level guard needed. -->
+  <!-- Webhook event queue. raw_payload has admin-only groups on the field
+       itself, so Odoo hides it from everyone else. -->
   <record id="meta_webhook_event_view_list" model="ir.ui.view">
     <field name="name">meta.webhook.event.list</field>
     <field name="model">meta.webhook.event</field>

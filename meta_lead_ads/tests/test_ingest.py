@@ -4,32 +4,11 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-"""Tests for the idempotent lead ingestion service.
+"""Tests for ``meta.lead.ingest.ingest_leadgen`` and the answer capture model.
 
-Pins the contract of
-``meta.lead.ingest.ingest_leadgen(page, leadgen_id, trigger='webhook', raw=None)``
-and the ``meta.lead.answer`` capture model. The whole pipeline runs with no
-network: ``fetch_lead`` and ``resolve_name`` are mocked on
-``type(self.env['meta.graph.client'])`` (the class, never a recordset --
-recordsets are read-only to ``mock.patch.object``).
-
-Conventions used throughout:
-  - ``assertRaises`` takes a single exception class, never a tuple.
-  - Use ``search_count(...)``; the legacy ``count=`` kwarg on ``search`` was
-    removed in Odoo 18.
-  - A group-gated read raises ``AccessError`` rather than silently omitting.
-  - Patch the Graph client method on ``type(client)`` (the class), never on a
-    recordset.
-  - IntegrityError tests use a savepoint + ``mute_logger('odoo.sql_db')``.
-
-Scenarios covered include: replay after a dedup match (no re-fetch, no
-duplicate answers, leadgen id stamped); concurrency through the service
-(savepoint catch -> skipped_idempotent); a per-form override cannot remap a
-canonical key; a malformed leadgen_id is rejected before any Graph call;
-open-only scope (archived/won leads spawn a new lead); partial attribution
-resolves only the missing names; a match already carrying a different
-leadgen_id spawns a new lead with the old id untouched; and two distinct Meta
-leads on one email stay independently idempotent.
+No network: ``fetch_lead`` and ``resolve_name`` are patched on the
+meta.graph.client class, since mock.patch.object can't patch a recordset.
+IntegrityError tests run inside a savepoint with the sql_db logger muted.
 """
 from unittest import mock
 
@@ -43,9 +22,7 @@ from odoo.addons.meta_lead_ads.models.exceptions import MetaPermanentError
 
 
 class IngestFixtureMixin:
-    """Shared fixture chain + Graph-client class-patch idiom for both test
-    classes. Builds meta.account -> meta.page -> meta.lead.form and exposes
-    ``self.Client`` (the meta.graph.client class) and ``_fake_lead``."""
+    """Account, page and form fixtures plus helpers to fake the Graph client."""
 
     def setUp(self):
         super().setUp()
@@ -61,14 +38,13 @@ class IngestFixtureMixin:
         self.form = self.env['meta.lead.form'].create({
             'name': 'Contact Us', 'form_id': 'F1', 'page_id': self.page.id,
         })
-        # Patch the Graph client on the class, never on a recordset.
+        # Patch targets go on the class; recordsets can't be patched.
         self.Client = type(self.env['meta.graph.client'])
         self.Lead = self.env['crm.lead']
         self.Ingest = self.env['meta.lead.ingest']
 
     def _fake_lead(self, **over):
-        """Return a Graph lead-read payload dict. ``over`` shallow-overrides
-        top-level keys (e.g. ``id='LG2'``, ``field_data=[...]``)."""
+        """Return a Graph lead payload; ``over`` replaces top-level keys."""
         data = {
             'id': 'LG1', 'created_time': '2026-06-14T10:00:00+0000',
             'field_data': [
@@ -86,14 +62,14 @@ class IngestFixtureMixin:
         return data
 
     def _resolve_passthrough(self, *a, payload_name=None, **k):
-        """resolve_name stub: echo the payload name so a payload-carried *_name
-        triggers zero Graph traffic."""
+        """Stub for resolve_name that returns the name already in the payload."""
         return payload_name
 
     def _patch_graph(self, fetch_lead=None, resolve_name=None):
-        """Return a context manager patching both Graph methods on the class.
-        ``fetch_lead`` may be a return value (dict) OR a mock.Mock; default
-        ``resolve_name`` echoes the payload name."""
+        """Patch fetch_lead and resolve_name on the Graph client class.
+
+        ``fetch_lead`` can be a payload dict or a ready-made Mock.
+        """
         if not isinstance(fetch_lead, mock.Mock):
             fetch_lead = mock.Mock(return_value=fetch_lead
                                    if fetch_lead is not None else self._fake_lead())
@@ -107,14 +83,12 @@ class IngestFixtureMixin:
 
 @tagged('post_install', '-at_install')
 class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
-    """End-to-end behavior of ingest_leadgen with a fully mocked Graph
-    client."""
+    """ingest_leadgen end to end, with the Graph client mocked."""
 
     # ---- idempotency -----------------------------------------------------
 
     def test_create_then_idempotent_skip(self):
-        """Ingesting the same leadgen_id twice yields one lead; the second call
-        does not re-fetch and logs skipped_idempotent."""
+        """A repeated leadgen_id returns the same lead without a second fetch."""
         fetch = mock.Mock(return_value=self._fake_lead())
         with self._patch_graph(fetch_lead=fetch):
             lead1 = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
@@ -122,30 +96,25 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(lead1, lead2)
         self.assertEqual(
             self.Lead.search_count([('meta_leadgen_id', '=', 'LG1')]), 1)
-        # The pre-check short-circuits the 2nd ingest -> only one Graph fetch.
+        # The existing-lead lookup short-circuits the second call.
         self.assertEqual(fetch.call_count, 1)
         self.assertTrue(self.env['meta.sync.log'].search_count(
             [('meta_leadgen_id', '=', 'LG1'),
              ('status', '=', 'skipped_idempotent')]))
 
     def test_concurrency_integrityerror_treated_as_skip(self):
-        """The DB UNIQUE contract: a direct second create with the same
-        leadgen_id raises IntegrityError on flush. Pins that the constraint
-        exists; the service-path catch is the next test."""
+        """The UNIQUE constraint on meta_leadgen_id rejects a second row."""
         self.Lead.create({'name': 'L A', 'meta_leadgen_id': 'LG1'})
         with self.assertRaises(IntegrityError), mute_logger('odoo.sql_db'):
             with self.env.cr.savepoint():
                 self.Lead.create({'name': 'L B', 'meta_leadgen_id': 'LG1'})
 
     def test_concurrency_service_path_skip(self):
-        """Force ingest past its pre-check so the create/flush path itself
-        races the UNIQUE constraint: the service catches IntegrityError,
-        re-reads the existing lead, logs skipped_idempotent, no duplicate.
+        """A create that loses the UNIQUE race returns the existing lead.
 
-        The pre-check seam ``meta.lead.ingest._find_by_leadgen_id(leadgen_id)``
-        returns a crm.lead recordset (empty when unseen). Patching it to return
-        an empty recordset once drives the create path even though the row
-        already exists."""
+        ``_find_by_leadgen_id`` is patched to return nothing, so the service
+        tries to insert a row that already exists, as a concurrent worker would.
+        """
         existing = self.Lead.create({'name': 'Pre', 'meta_leadgen_id': 'LG1'})
         existing.flush_recordset()
         empty = self.Lead.browse()
@@ -162,21 +131,19 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
              ('status', '=', 'skipped_idempotent')]))
 
     def test_replay_after_dedup_match(self):
-        """First ingest matches by email and stamps meta_leadgen_id;
-        re-ingesting the same id hits the pre-check -> no re-fetch, no duplicate
-        answers, skipped_idempotent."""
+        """Replaying a lead that was merged by email is skipped without a fetch."""
         matched = self.Lead.create({
             'name': 'Existing', 'email_from': 'jane@example.com',
             'type': 'lead'})
         with self._patch_graph():
             self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
-        self.assertEqual(matched.meta_leadgen_id, 'LG1')   # stamped
+        self.assertEqual(matched.meta_leadgen_id, 'LG1')
         answer_count_1 = len(matched.answer_ids)
         fetch2 = mock.Mock(return_value=self._fake_lead())
         with self._patch_graph(fetch_lead=fetch2):
             self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
-        self.assertEqual(fetch2.call_count, 0)             # no re-fetch
-        self.assertEqual(len(matched.answer_ids), answer_count_1)  # no dup
+        self.assertEqual(fetch2.call_count, 0)
+        self.assertEqual(len(matched.answer_ids), answer_count_1)
         self.assertEqual(
             self.Lead.search_count([('meta_leadgen_id', '=', 'LG1')]), 1)
         self.assertTrue(self.env['meta.sync.log'].search_count(
@@ -184,9 +151,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
              ('status', '=', 'skipped_idempotent')]))
 
     def test_dedup_match_with_existing_different_leadgen_id_creates_new(self):
-        """An open lead already carrying a different leadgen_id (LGOLD) is not a
-        usable merge target for LGNEW (same email) -> a new lead is created and
-        the old lead's id is left untouched."""
+        """A lead already tied to another leadgen_id is not merged into."""
         old = self.Lead.create({
             'name': 'Old', 'email_from': 'jane@example.com',
             'meta_leadgen_id': 'LGOLD', 'type': 'lead'})
@@ -199,28 +164,25 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
             new = self.Ingest.ingest_leadgen(self.page, 'LGNEW', 'manual')
         after = self.Lead.search_count(
             [('email_from', '=ilike', 'jane@example.com')])
-        self.assertEqual(after, before + 1)                # a NEW lead created
-        self.assertEqual(old.meta_leadgen_id, 'LGOLD')     # NOT overwritten
+        self.assertEqual(after, before + 1)
+        self.assertEqual(old.meta_leadgen_id, 'LGOLD')
         self.assertNotEqual(new, old)
         self.assertEqual(new.meta_leadgen_id, 'LGNEW')
         log = self.env['meta.sync.log'].search(
             [('meta_leadgen_id', '=', 'LGNEW')], limit=1)
         self.assertEqual(log.status, 'success')
-        self.assertEqual(log.match_key, 'none')            # created, not merged
+        self.assertEqual(log.match_key, 'none')
 
     def test_two_distinct_meta_leads_same_email_preserve_idempotency_for_both(self):
-        """LG1 merges onto an un-stamped open lead; LG2 (same email) spawns a
-        second lead; re-ingesting either is skipped_idempotent with no re-fetch
-        and no duplicate answers; idempotency holds independently for both
-        ids."""
+        """Two Meta leads with the same email each stay idempotent on replay."""
         seed = self.Lead.create({
             'name': 'Seed', 'email_from': 'jane@example.com', 'type': 'lead'})
-        # (1) LG1 merges onto the un-stamped lead.
+        # LG1 merges into the seed lead, which has no leadgen_id yet.
         with self._patch_graph(fetch_lead=self._fake_lead(id='LG1')):
             self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
         self.assertEqual(seed.meta_leadgen_id, 'LG1')
         lg1_answers = len(seed.answer_ids)
-        # (2) LG2 same email -> a SECOND lead (seed is already Meta-claimed).
+        # LG2 gets its own lead because the seed now belongs to LG1.
         with self._patch_graph(fetch_lead=self._fake_lead(
                 id='LG2', field_data=[
                     {'name': 'email', 'values': ['jane@example.com']},
@@ -229,15 +191,14 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(
             self.Lead.search_count([('email_from', '=ilike',
                                      'jane@example.com')]), 2)
-        self.assertEqual(seed.meta_leadgen_id, 'LG1')      # id unchanged
+        self.assertEqual(seed.meta_leadgen_id, 'LG1')
         self.assertEqual(lead2.meta_leadgen_id, 'LG2')
-        # (3) re-ingest LG1 -> skipped, no re-fetch, no dup answers.
+        # Replaying either id must not fetch again or add answers.
         refetch1 = mock.Mock(return_value=self._fake_lead(id='LG1'))
         with self._patch_graph(fetch_lead=refetch1):
             self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
         self.assertEqual(refetch1.call_count, 0)
         self.assertEqual(len(seed.answer_ids), lg1_answers)
-        # (4) re-ingest LG2 -> likewise.
         refetch2 = mock.Mock(return_value=self._fake_lead(id='LG2'))
         with self._patch_graph(fetch_lead=refetch2):
             self.Ingest.ingest_leadgen(self.page, 'LG2', 'manual')
@@ -256,8 +217,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(lead.type, 'lead')
 
     def test_canonical_field_map(self):
-        """Canonical keys always map -- full_name->contact_name,
-        email->email_from, phone_number->phone, company_name->partner_name."""
+        """Standard Meta keys land on the matching crm.lead fields."""
         payload = self._fake_lead(field_data=[
             {'name': 'email', 'values': ['Jane@Example.com']},
             {'name': 'full_name', 'values': ['Jane Doe']},
@@ -271,8 +231,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(lead.partner_name, 'Acme Corp')
 
     def test_per_form_override_map(self):
-        """A per-form override of a new meta_key lands on its crm field
-        (overrides add mappings)."""
+        """A per-form mapping sends a custom question to its crm.lead field."""
         crm_field = self.env['ir.model.fields'].search(
             [('model', '=', 'crm.lead'), ('name', '=', 'function')], limit=1)
         self.env['meta.field.mapping'].create({
@@ -287,8 +246,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(lead.function, 'CTO')
 
     def test_override_cannot_remap_canonical(self):
-        """A per-form override that tries to remap the canonical key 'email'
-        does not redirect the canonical field -- canonical wins."""
+        """A per-form mapping can't redirect a standard key such as email."""
         website_field = self.env['ir.model.fields'].search(
             [('model', '=', 'crm.lead'), ('name', '=', 'website')], limit=1)
         self.env['meta.field.mapping'].create({
@@ -303,8 +261,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertNotEqual((lead.website or '').lower(), 'jane@example.com')
 
     def test_unmapped_question_captured(self):
-        """An unmapped question -> a meta.lead.answer row + a description line;
-        the raw payload is preserved in the success sync-log row."""
+        """Unmapped answers are kept as answer rows, in the description and log."""
         with self._patch_graph():
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
         budget = lead.answer_ids.filtered(
@@ -320,8 +277,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
     # ---- attribution -----------------------------------------------------
 
     def test_attribution_names_no_graph_call(self):
-        """*_name populated straight from the payload with zero resolve_name
-        calls."""
+        """Names present in the payload are used without calling resolve_name."""
         resolve = mock.Mock(side_effect=self._resolve_passthrough)
         with self._patch_graph(resolve_name=resolve):
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
@@ -331,9 +287,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(resolve.call_count, 0)
 
     def test_partial_attribution_resolve_only_missing(self):
-        """resolve_name is called only for the missing names; zero calls for
-        present ones. Payload carries campaign_name but omits adset_name /
-        ad_name / form name."""
+        """resolve_name is only called for names missing from the payload."""
         payload = self._fake_lead()
         payload.pop('adset_name', None)
         payload.pop('ad_name', None)
@@ -341,17 +295,14 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
                             payload_name or 'resolved')
         with self._patch_graph(fetch_lead=payload, resolve_name=resolve):
             self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
-        # campaign_name was present -> never resolved.
         for call in resolve.call_args_list:
             self.assertNotIn('campaign', call.args)
-        # one resolve per missing name (adset, ad, form) -> non-zero, small.
+        # At most one call each for adset, ad and form.
         self.assertTrue(resolve.call_count >= 1)
         self.assertTrue(resolve.call_count <= 3)
 
     def test_utm_get_or_create_no_dup(self):
-        """Two leads in the same campaign -> one utm.campaign; FB -> stock
-        source; medium -> seeded Paid Social. Two distinct emails so dedup
-        does not interfere."""
+        """Two leads in one campaign share a single utm.campaign record."""
         with self._patch_graph(fetch_lead=self._fake_lead(id='LGA', field_data=[
                 {'name': 'email', 'values': ['a@example.com']}])):
             lead_a = self.Ingest.ingest_leadgen(self.page, 'LGA', 'manual')
@@ -369,27 +320,24 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
     # ---- dedup -----------------------------------------------------------
 
     def test_dedup_email_branch(self):
-        """Match an open un-stamped lead by email, enrich blank fields only,
-        append answers, match_key=email, and stamp meta_leadgen_id on the
-        matched lead."""
+        """An open lead with the same email is updated instead of duplicated."""
         existing = self.Lead.create({
             'name': 'Existing', 'email_from': 'jane@example.com',
             'phone': False, 'type': 'lead'})
         before = self.Lead.search_count([])
         with self._patch_graph():
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
-        self.assertEqual(lead, existing)                   # linked, not created
+        self.assertEqual(lead, existing)
         self.assertEqual(self.Lead.search_count([]), before)
-        self.assertIn('555', existing.phone or '')         # blank field filled
-        self.assertTrue(existing.answer_ids)               # answers appended
-        self.assertEqual(existing.meta_leadgen_id, 'LG1')  # stamped
+        self.assertIn('555', existing.phone or '')
+        self.assertTrue(existing.answer_ids)
+        self.assertEqual(existing.meta_leadgen_id, 'LG1')
         log = self.env['meta.sync.log'].search(
             [('meta_leadgen_id', '=', 'LG1')], limit=1)
         self.assertEqual(log.match_key, 'email')
 
     def test_dedup_phone_branch(self):
-        """Match by normalized phone (+1 (555)... vs 5551234567) when there is
-        no email; match_key=phone."""
+        """Without an email, a differently formatted phone still matches."""
         existing = self.Lead.create({
             'name': 'Existing', 'phone': '5551234567', 'type': 'lead'})
         payload = self._fake_lead(field_data=[
@@ -405,8 +353,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(log.match_key, 'phone')
 
     def test_dedup_archived_creates_new(self):
-        """Same email on an archived (active=False) lead -> a new lead is
-        created (matching is open-only)."""
+        """An archived lead with the same email is not reused."""
         self.Lead.create({
             'name': 'Archived', 'email_from': 'jane@example.com',
             'active': False, 'type': 'lead'})
@@ -423,8 +370,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(lead.meta_leadgen_id, 'LG1')
 
     def test_dedup_won_creates_new(self):
-        """Same email on a won (stage_id.is_won) active lead -> a new lead is
-        created, not the won one matched (matching is open-only)."""
+        """A won lead with the same email is not reused."""
         won_stage = self.env['crm.stage'].search(
             [('is_won', '=', True)], limit=1)
         if not won_stage:
@@ -443,8 +389,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(lead.meta_leadgen_id, 'LG1')
 
     def test_enrich_not_clobber(self):
-        """Matching by phone must not overwrite a non-empty salesperson-edited
-        email_from / contact_name -- only blank fields are filled."""
+        """Merging only fills blank fields; hand-edited values are kept."""
         existing = self.Lead.create({
             'name': 'Existing', 'phone': '5551234567',
             'email_from': 'edited@hand.example',
@@ -461,8 +406,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
     # ---- contactless leads + synthetic subject ---------------------------
 
     def test_contactless_lead_created_success(self):
-        """No email and no phone -> a lead is still created, sync-log
-        status=success, synthetic name set. Never drop a real paid lead."""
+        """A lead with no email or phone is still created, not dropped."""
         payload = self._fake_lead(field_data=[
             {'name': 'what_is_your_budget', 'values': ['$5k']}])
         with self._patch_graph(fetch_lead=payload):
@@ -474,10 +418,8 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
         self.assertEqual(log.status, 'success')
 
     def test_synthetic_subject(self):
-        """The subject is always "Meta Lead • {form} • {date}" regardless of
-        contact data; the submitter's name lives in contact_name. The separator
-        is asserted literally (•) so a regression to another glyph is
-        caught."""
+        """The lead name is built from form and date; the person goes in
+        contact_name. The regex checks the exact bullet separator."""
         with self._patch_graph():
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
         self.assertRegex(
@@ -487,9 +429,7 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
     # ---- input guard -----------------------------------------------------
 
     def test_leadgen_id_rejected(self):
-        """A '/'-bearing or whitespace-only leadgen_id is rejected with
-        MetaPermanentError before any Graph call; fetch_lead is not called and
-        no lead is created for that id."""
+        """A leadgen_id with '/' or only spaces is rejected before any fetch."""
         fetch = mock.Mock(return_value=self._fake_lead())
         with self._patch_graph(fetch_lead=fetch):
             with self.assertRaises(MetaPermanentError):
@@ -503,13 +443,10 @@ class TestIngestPipeline(IngestFixtureMixin, TransactionCase):
 
 @tagged('post_install', '-at_install')
 class TestIngestWizard(IngestFixtureMixin, TransactionCase):
-    """The admin-only "Ingest by leadgen_id" wizard (meta.ingest.leadgen) is a
-    thin wrapper over ingest_leadgen('manual') and is admin-gated."""
+    """The admin-only manual ingest wizard."""
 
     def test_wizard_calls_service(self):
-        """The wizard routes through ingest_leadgen(..., 'manual'), returns an
-        act_window pointing at the created/returned crm.lead, and writes a
-        sync-log row with trigger='manual'."""
+        """The wizard ingests with trigger 'manual' and opens the lead."""
         with self._patch_graph():
             wizard = self.env['meta.ingest.leadgen'].create({
                 'page_id': self.page.id, 'leadgen_id': 'LG1'})
@@ -525,8 +462,7 @@ class TestIngestWizard(IngestFixtureMixin, TransactionCase):
             [('meta_leadgen_id', '=', 'LG1'), ('trigger', '=', 'manual')]))
 
     def test_wizard_admin_gated(self):
-        """The wizard model is admin-only: a non-admin Meta User
-        (group_meta_user only) cannot use it -> AccessError."""
+        """A plain Meta user gets AccessError on the wizard."""
         base_internal = self.env.ref('base.group_user')
         meta_user_group = self.env.ref('meta_lead_ads.group_meta_user')
         non_admin = self.env['res.users'].create({

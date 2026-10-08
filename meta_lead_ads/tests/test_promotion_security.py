@@ -4,27 +4,11 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-"""Admin-gating tests for the promotion wizard (``meta.promote.answer``).
+"""Admin-only checks for the promotion wizard (``meta.promote.answer``).
 
-A non-admin internal user must not be able to drive schema mutation, neither
-via the ACL row nor via a direct RPC method call. Both layers are pinned:
-
-  (S1) ACL boundary — a non-admin (base.group_user, not group_meta_admin)
-       cannot even create the wizard record -> AccessError.
-  (S2) in-method has_group gate — even if the wizard is built as an admin,
-       invoking the server method as a non-admin
-       (``wizard.with_user(non_admin).action_promote()``) raises AccessError
-       because action_promote performs an in-method
-       has_group('meta_lead_ads.group_meta_admin') check beyond the ACL row.
-       This proves a non-admin cannot drive schema mutation even if they reach
-       the method via RPC, not merely that the UI button is hidden.
-
-Conventions:
-  - base.group_user makes the non-admin a realistic internal (non-share) user;
-    without it Odoo sets share=True (portal semantics) and ACL tests pass for
-    the wrong reasons.
-  - assertRaises takes a single exception class, never a tuple (a tuple
-    TypeErrors at runtime).
+Promoting an answer creates a custom field, so a non-admin is stopped twice:
+the ACL blocks creating the wizard, and action_promote() checks
+group_meta_admin itself in case it is called over RPC.
 """
 from odoo.tests.common import TransactionCase, tagged
 from odoo.exceptions import AccessError
@@ -37,12 +21,11 @@ class TestPromotionSecurity(TransactionCase):
         base_internal = self.env.ref('base.group_user')
         self.user_group = self.env.ref('meta_lead_ads.group_meta_user')
         self.admin_group = self.env.ref('meta_lead_ads.group_meta_admin')
-        # A non-admin internal user: base.group_user + group_meta_user, but
-        # NOT group_meta_admin.
+        # Internal user (base.group_user, so not a share user) with Meta
+        # read access only.
         self.non_admin = self.env['res.users'].create({
             'name': 'Promote NonAdmin', 'login': 'promote_nonadmin',
             'group_ids': [(6, 0, [base_internal.id, self.user_group.id])]})
-        # An admin who CAN build the wizard (for the S2 direct-call test).
         self.meta_admin = self.env['res.users'].create({
             'name': 'Promote Admin', 'login': 'promote_admin',
             'group_ids': [(6, 0, [base_internal.id, self.admin_group.id])]})
@@ -62,29 +45,18 @@ class TestPromotionSecurity(TransactionCase):
             'label': 'Budget', 'value': '$5k'})
         return lead, answer
 
-    # ---- (S1) ACL boundary -----------------------------------------------
-
     def test_non_admin_cannot_open_or_create_wizard(self):
-        """A non-admin (group_meta_user only, NOT group_meta_admin) attempting
-        to create the promote wizard raises AccessError (ACL boundary)."""
+        """A non-admin can't create the promote wizard."""
         form = self._form()
         lead, answer = self._lead_with_answer(form)
         with self.assertRaises(AccessError):
             self.env['meta.promote.answer'].with_user(self.non_admin).create({
                 'answer_id': answer.id, 'lead_id': lead.id})
 
-    # ---- (S2) in-method has_group gate (defense-in-depth) -----------------
-
     def test_non_admin_direct_method_call_raises(self):
-        """Build the wizard AS ADMIN, then invoke the SERVER METHOD directly as
-        a non-admin: wizard.with_user(non_admin).action_promote() MUST raise
-        AccessError because action_promote performs an in-method
-        has_group('meta_lead_ads.group_meta_admin') check BEYOND the ACL row.
-        Proves a non-admin cannot drive schema mutation even via RPC, not just
-        that the UI button is hidden. Single-class assertRaises, NO tuple."""
+        """action_promote() raises for a non-admin even on a wizard an admin created."""
         form = self._form()
         lead, answer = self._lead_with_answer(form)
-        # Built by an admin (legitimately reachable).
         wizard = self.env['meta.promote.answer'].with_user(
             self.meta_admin).create({
                 'answer_id': answer.id, 'lead_id': lead.id})

@@ -4,13 +4,10 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/19.0/legal/licenses.html#odoo-apps
 
-"""Move existing deployments from the former 90-day sync-log retention default to
-the new 14-day default (feature: auto-clear sync logs after 14 days).
+"""Lower the sync-log retention default from 90 to 14 days on existing databases.
 
-The ``meta_lead_ads.sync_log_retention_days`` config parameter is seeded under
-``noupdate="1"`` so the XML value change does not reach existing databases on
-``-u``. This one-time migration nudges only deployments still on the OLD default
-(90) to 14, leaving any admin-customized value untouched.
+The parameter is seeded with noupdate="1", so changing the XML value does not
+reach databases that are only upgraded. Values an admin changed are kept.
 """
 import logging
 
@@ -25,8 +22,7 @@ def migrate(cr, version):
     env = api.Environment(cr, SUPERUSER_ID, {})
     icp = env['ir.config_parameter']
     current = icp.get_param(_KEY)
-    # Only adopt the new default where the value is unset or still the former
-    # 90-day default; respect any deliberate admin override.
+    # Only touch it if unset or still on the old default.
     if current in (False, None, '', '90'):
         icp.set_param(_KEY, '14')
         _logger.info(

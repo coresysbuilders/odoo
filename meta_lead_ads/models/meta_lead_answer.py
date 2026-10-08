@@ -12,11 +12,8 @@ class MetaLeadAnswer(models.Model):
     _description = 'Meta Lead Form Answer (unmapped question capture)'
     _order = 'lead_id, sequence, id'
 
-    # `value` holds the deterministic display string for a question — Meta's
-    # field_data[].values is an array, joined by the ingest service with ", ".
-    # This row is a queryable convenience view; the authoritative lossless copy
-    # of the full field_data array lives in meta.sync.log.raw_payload
-    # (admin-gated). Do not treat `value` as the only copy.
+    # `value` is Meta's values array joined with ", " for display. The full
+    # original array is kept in meta.sync.log.raw_payload (admin only).
     lead_id = fields.Many2one('crm.lead', string='Lead', required=True,
                               ondelete='cascade', index=True)
     sequence = fields.Integer(default=10)
@@ -25,12 +22,10 @@ class MetaLeadAnswer(models.Model):
     value = fields.Char(string='Answer')
 
     def action_promote_to_field(self):
-        # Admin-discoverable entry point: the answer-row button opens the
-        # meta.promote.answer wizard SEEDED from this row so it derives the
-        # field name from question_key (canonical, never the label).
-        # Admin-only is enforced by the button's groups= (UI hiding), the
-        # admin-only ACL row on meta.promote.answer (privilege boundary), and the
-        # in-method has_group gate inside action_promote (defense-in-depth).
+        # Open the promote wizard prefilled from this answer. The field name is
+        # derived from question_key, not the label. Admin-only: the button has
+        # groups=, the wizard's ACL is admin-only, and action_promote checks
+        # the group again.
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
