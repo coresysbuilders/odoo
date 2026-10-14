@@ -252,7 +252,7 @@ class TestDelegationWindowScope(TransactionCase):
 
     def test_no_duplicate_notifications(self):
         # Re-running the notify path for an already-surfaced delegate never
-        # creates a second engine To-Do (idempotent — review Codex-MEDIUM).
+        # creates a second engine To-Do (it is idempotent).
         self.Delegation.create(self._vals(self.user_a, self.user_b))
         request = self._submit()
         self.assertEqual(len(self._engine_todos(request, self.user_b)), 1)
