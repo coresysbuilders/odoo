@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Hide the core Expense Report menus and URL paths. These records belong
+        to hr_expense, so the uninstall hook restores their original values.
+    -->
+
+    <!-- Not in a noupdate block: upgrading this module re-applies these values -->
+
+    <!-- Written as record elements so that only the active flag is changed -->
+    <record id="hr_expense.menu_hr_expense_sheet_my_reports" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+    <record id="hr_expense.menu_hr_expense_report" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+    <!-- Accounting > Vendors > Employee Expenses -->
+    <record id="hr_expense.menu_hr_expense_account_employee_expenses" model="ir.ui.menu">
+        <field name="active" eval="False"/>
+    </record>
+
+    <!-- eval="False" stores NULL; an empty value would conflict with the unique path index -->
+    <record id="hr_expense.action_hr_expense_sheet_my_all" model="ir.actions.act_window">
+        <field name="path" eval="False"/>
+    </record>
+    <record id="hr_expense.action_hr_expense_sheet_all" model="ir.actions.act_window">
+        <field name="path" eval="False"/>
+    </record>
+
+</odoo>

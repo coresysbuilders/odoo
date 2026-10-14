@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Expenses to Process: the approval queue of the current manager -->
+
+    <!-- 1. The search view variant that carries the searchpanel. -->
+    <record id="hr_expense_view_search_with_panel_direct" model="ir.ui.view">
+        <field name="name">hr.expense.view.search.with.panel.direct</field>
+        <field name="model">hr.expense</field>
+        <field name="inherit_id" ref="hr_expense.hr_expense_view_search"/>
+        <field name="mode">primary</field>
+        <field name="arch" type="xml">
+            <!-- Primary variant of core's search view that adds a search panel -->
+            <xpath expr="//search" position="inside">
+                <searchpanel>
+                    <field name="expense_state" expand="1" select="multi"
+                           icon="fa-check-square-o" enable_counters="1"/>
+                    <field name="employee_id" limit="20" hierarchize="0"
+                           select="one" icon="fa-users"/>
+                    <field name="company_id" expand="1" icon="fa-building"
+                           groups="base.group_multi_company"/>
+                </searchpanel>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- 2. The "Expenses to Process" action the digest and the menu point at. -->
+    <record id="hr_expense_actions_to_process_direct" model="ir.actions.act_window">
+        <field name="name">Expenses to Process</field>
+        <!-- Action paths are unique per database, hence the module-specific prefix -->
+        <field name="path">direct-expenses-to-process</field>
+        <field name="res_model">hr.expense</field>
+        <field name="view_mode">list,kanban,form,graph,pivot,activity</field>
+        <field name="search_view_id" ref="hr_expense_view_search_with_panel_direct"/>
+        <!--
+            The approver restriction lives in the domain rather than in a removable
+            facet, so managers only ever see the expenses waiting on them.
+        -->
+        <field name="domain">[('approved_by', '=', uid)]</field>
+        <field name="context">{'searchpanel_default_expense_state': ['submitted']}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Nothing waiting for your approval</p>
+            <p>Expenses your team submits will appear here. You will also get a weekly email when something is waiting.</p>
+        </field>
+    </record>
+
+    <!-- 3. The in-app route to the same list. -->
+    <menuitem id="menu_hr_expense_expenses_to_process_direct"
+              name="Expenses to Process"
+              parent="hr_expense.menu_hr_expense_my_expenses"
+              action="hr_expense_actions_to_process_direct"
+              groups="hr_expense.group_hr_expense_team_approver"
+              sequence="3"/>
+
+</odoo>

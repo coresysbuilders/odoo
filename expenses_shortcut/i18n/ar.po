@@ -1,0 +1,550 @@
+# Translation of Odoo Server.
+# This file contains the translation of the following modules:
+# 	* expenses_shortcut
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server 18.0\n"
+"Report-Msgid-Bugs-To: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: \n"
+"Plural-Forms: \n"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_hr_expense__expense_state
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "Status"
+msgstr "الحالة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__expense_state__draft
+msgid "Draft"
+msgstr "مسودة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__expense_state__submitted
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__approval_state__submitted
+msgid "Submitted"
+msgstr "تم الإرسال"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__expense_state__approved
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__approval_state__approved
+msgid "Approved"
+msgstr "تمت الموافقة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__expense_state__posted
+msgid "Posted"
+msgstr "مُرحّل"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__expense_state__in_payment
+msgid "In Payment"
+msgstr "بانتظار التسوية"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__expense_state__paid
+msgid "Paid"
+msgstr "مدفوع"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__expense_state__refused
+#: model:ir.model.fields.selection,name:expenses_shortcut.selection__hr_expense__approval_state__refused
+msgid "Refused"
+msgstr "تم الرفض"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_hr_expense__approval_state
+msgid "Approval Status"
+msgstr "حالة الموافقة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_hr_expense__approval_date
+msgid "Approval Date"
+msgstr "تاريخ الموافقة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_hr_expense__can_approve
+msgid "Can Approve"
+msgstr "بإمكانه الموافقة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_hr_expense__can_reset
+msgid "Can Reset"
+msgstr "بإمكانه إعادة تعيين"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "%(expense_name)s: Your are neither a Manager nor a HR Officer of this expense's company"
+msgstr "%(expense_name)s: أنت لست مديراً أو مسؤولاً عن الموارد البشرية في شركة هذه النفقة"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "%(expense_name)s: You are neither a Manager nor a HR Officer"
+msgstr "%(expense_name)s: أنت لست مديراً أو مسؤولاً عن الموارد البشرية"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "%(expense_name)s: It is your own expense"
+msgstr "%(expense_name)s: إنها نفقتك الخاصة"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "%(expense_name)s: It is not from your department"
+msgstr "%(expense_name)s: ليس من قسمك"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You cannot approve:\n %(reasons)s"
+msgstr "لا يمكنك الموافقة:\n %(reasons)s"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You cannot refuse:\n %(reasons)s"
+msgstr "لا يمكنك الرفض:\n %(reasons)s"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "Only HR Officers, accountants, or the concerned employee can reset to draft."
+msgstr "وحدهم موظفو الموارد البشرية أو المحاسبون أو الموظف المعني الذين بإمكانهم إعادة تعيين النفقة إلى حالة المسودة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You cannot reset to draft an expense linked to a posted journal entry."
+msgstr "لا يمكنك إعادة تعيين نفقات مرتبطة بقيد دفتر يومية تم ترحيله إلى حالة المسودة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You do not have access to one or more of the selected expenses."
+msgstr "ليس لديك صلاحية الوصول إلى واحدة أو أكثر من النفقات المحددة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid ""
+"%(fields)s cannot be written: they are derived from the approval and payment "
+"history of this expense."
+msgstr ""
+"لا يمكن كتابة %(fields)s: فهي مشتقة من سجل الموافقة والدفع الخاص بهذه النفقة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense_sheet.py:0
+msgid ""
+"The approver of an expense report is resolved by the workflow and cannot be "
+"set by hand."
+msgstr ""
+"يتم تحديد المعتمِد لتقرير النفقات من خلال سير العمل ولا يمكن تعيينه يدويًا."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+#: code:addons/expenses_shortcut/models/hr_expense_sheet.py:0
+msgid "An automatically created expense report holds exactly one expense."
+msgstr "يحتوي تقرير النفقات المُنشأ تلقائيًا على نفقة واحدة بالضبط."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You can only submit a draft expense."
+msgstr "لا يمكنك تقديم نفقة إلا إذا كانت في حالة المسودة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You do not have the required permission to submit this expense."
+msgstr "ليس لديك الإذن المطلوب لإرسال هذه النفقة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You can not submit an expense without a category."
+msgstr "لا يمكنك تقديم نفقات بدون فئة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You can not submit an expense without an amount."
+msgstr "لا يمكنك تقديم نفقات بدون مبلغ."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You can only approve a submitted expense."
+msgstr "لا يمكنك الموافقة على نفقة إلا إذا كانت في حالة تم الإرسال."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You can only refuse a submitted or approved expense."
+msgstr "لا يمكنك رفض نفقة إلا إذا كانت في حالة تم الإرسال أو تمت الموافقة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You cannot cancel an expense linked to a posted journal entry"
+msgstr "لا يمكنك إلغاء نفقات مرتبطة بقيد يومية مُرَحّل"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/wizard/expenses_shortcut_refuse_reason.py:0
+msgid "A reason is required to refuse an expense."
+msgstr "يجب إدخال سبب لرفض المصروف."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/wizard/expenses_shortcut_refuse_reason.py:0
+msgid "There are no expenses to refuse."
+msgstr "لا توجد نفقات لرفضها."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "%(expense_name)s belongs to a report created outside this workflow. Manage it from that report."
+msgstr "%(expense_name)s ينتمي إلى تقرير نفقات تم إنشاؤه خارج هذا المسار. قم بإدارته من ذلك التقرير."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+#: code:addons/expenses_shortcut/wizard/expenses_shortcut_post_wizard.py:0
+msgid "You can only generate an accounting entry for approved expense(s)."
+msgstr "يمكنك إنشاء قيد محاسبي للنفقات التي تمت الموافقة عليها فقط."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "Please specify an expense journal in order to generate accounting entries."
+msgstr "يُرجى تحديد دفتر يومية للنفقات حتى تتمكن من إنشاء قيود محاسبية."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You don't have the rights to create accounting entries."
+msgstr "لا تملك صلاحية إنشاء القيود المحاسبية."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You can't post simultaneously employee-paid expenses belonging to different companies"
+msgstr "لا يمكنك ترحيل النفقات التي يدفعها الموظفون في نفس الوقت والتي تنتمي إلى شركات مختلفة"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You can only register payment for posted journal entries."
+msgstr "يمكنك تسجيل الدفع لقيود اليومية المرحّلة فقط."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid ""
+"You can't register a payment because there is nothing left to pay on the "
+"selected journal items."
+msgstr "لا يمكنك تسجيل الدفع لأنه لم يتبق شيء لدفعه في عناصر اليومية المحددة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "Expenses paid by the company are posted and settled together with their payment. Open the related payment in Accounting."
+msgstr "النفقات التي تدفعها الشركة يتم ترحيلها وتسويتها مع دفعتها. افتح الدفعة المرتبطة في تطبيق المحاسبة."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "Select an active purchase journal that belongs to the expense's company."
+msgstr "اختر دفتر يومية مشتريات نشطًا يتبع شركة النفقة."
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_hr_expense_sheet__direct_auto_sheet
+msgid "Auto-created for one expense"
+msgstr "مُنشأ تلقائيًا لنفقة واحدة"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_refuse_reason_template
+msgid "Your Expense"
+msgstr "نفقتك"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_refuse_reason_template
+msgid "has been refused"
+msgstr "تم رفضه"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_refuse_reason_template
+msgid "Reason:"
+msgstr "السبب:"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_refuse_wizard_view_form
+msgid "Expense refuse reason"
+msgstr "سبب رفض النفقة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_expenses_shortcut_refuse_wizard__reason
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_refuse_wizard_view_form
+msgid "Reason"
+msgstr "السبب"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_refuse_wizard_view_form
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_post_wizard_view_form
+msgid "Cancel"
+msgstr "إلغاء"
+
+#. module: expenses_shortcut
+#: model:ir.actions.act_window,name:expenses_shortcut.expenses_shortcut_refuse_wizard_action
+msgid "Refuse Expense"
+msgstr "رفض النفقة"
+
+#. module: expenses_shortcut
+#: model:ir.model,name:expenses_shortcut.model_expenses_shortcut_post_wizard
+msgid "Expense Posting Wizard"
+msgstr "معالج ترحيل النفقات"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_expenses_shortcut_post_wizard__employee_journal_id
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_post_wizard_view_form
+msgid "Journal"
+msgstr "دفتر اليومية"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_expenses_shortcut_post_wizard__accounting_date
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_post_wizard_view_form
+msgid "Accounting date"
+msgstr "تاريخ المحاسبة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_expenses_shortcut_post_wizard__company_id
+msgid "Company"
+msgstr "الشركة"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,field_description:expenses_shortcut.field_expenses_shortcut_post_wizard__expense_ids
+msgid "Expenses"
+msgstr "النفقات"
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,help:expenses_shortcut.field_expenses_shortcut_post_wizard__employee_journal_id
+msgid "The journal used when the expense is paid by employee."
+msgstr "دفتر اليومية المستخدم عندما يتم دفع النفقة من قِبَل الموظف."
+
+#. module: expenses_shortcut
+#: model:ir.model.fields,help:expenses_shortcut.field_expenses_shortcut_post_wizard__accounting_date
+msgid "Specify the bill date of the related vendor bill."
+msgstr "حدد تاريخ الفاتورة لفاتورة المورّد ذو الصلة."
+
+#. module: expenses_shortcut
+#: model:ir.actions.act_window,name:expenses_shortcut.expenses_shortcut_post_wizard_action
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_post_wizard_view_form
+msgid "Post Expenses"
+msgstr "ترحيل النفقات"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_form_direct
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_expenses_analysis_tree_direct
+msgid "Submit"
+msgstr "إرسال"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_form_direct
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_expenses_analysis_tree_direct
+msgid "Approve"
+msgstr "موافقة"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_form_direct
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expenses_shortcut_refuse_wizard_view_form
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_expenses_analysis_tree_direct
+msgid "Refuse"
+msgstr "رفض"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_form_direct
+msgid "Reset"
+msgstr "إعادة الضبط"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_form_direct
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_expenses_analysis_tree_direct
+msgid "Post Journal Entries"
+msgstr "ترحيل قيود اليومية"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_form_direct
+msgid "Pay"
+msgstr "الدفع"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "Paid by Company"
+msgstr "تُدفَع من قِبَل الشركة"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "Paid by Employee"
+msgstr "تُدفَع من قِبَل الموظف"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "To Submit"
+msgstr "للإرسال"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "Waiting Approval"
+msgstr "بانتظار الموافقة"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "To Post"
+msgstr "بانتظار الترحيل"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "Waiting Reimbursement"
+msgstr "بانتظار التعويض"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "All to Post"
+msgstr "كافة الفواتير المراد ترحيلها"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "All to Pay"
+msgstr "كافة الفواتير المراد دفعها"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_search_direct
+msgid "All Paid"
+msgstr "تم دفع الكل"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.hr_expense_view_form_direct
+msgid "Journal Entry"
+msgstr "قيد اليومية"
+
+#. module: expenses_shortcut
+#: model:ir.actions.act_window,name:expenses_shortcut.hr_expense_actions_to_process_direct
+#: model:ir.ui.menu,name:expenses_shortcut.menu_hr_expense_expenses_to_process_direct
+msgid "Expenses to Process"
+msgstr "النفقات المطلوب معالجتها"
+
+#. module: expenses_shortcut
+#: model_terms:ir.actions.act_window,help:expenses_shortcut.hr_expense_actions_to_process_direct
+msgid "Nothing waiting for your approval"
+msgstr "لا شيء بانتظار موافقتك"
+
+#. module: expenses_shortcut
+#: model_terms:ir.actions.act_window,help:expenses_shortcut.hr_expense_actions_to_process_direct
+msgid "Expenses your team submits will appear here. You will also get a weekly email when something is waiting."
+msgstr "ستظهر هنا النفقات التي يقدّمها فريقك. كما ستصلك رسالة بريد إلكتروني أسبوعية عند وجود ما ينتظر."
+
+#. module: expenses_shortcut
+#: model:mail.activity.type,name:expenses_shortcut.mail_act_expense_approval
+#: model:mail.activity.type,summary:expenses_shortcut.mail_act_expense_approval
+msgid "Expense Approval"
+msgstr "الموافقة على النفقة"
+
+#. module: expenses_shortcut
+#: model:ir.actions.server,name:expenses_shortcut.ir_cron_send_submitted_expenses_mail_ir_actions_server
+msgid "HR Expense: Send Submitted Expenses Mail"
+msgstr "نفقات الموارد البشرية: إرسال بريد النفقات المُرسَلة"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_submitted_digest_template
+msgid "Expenses approval"
+msgstr "الموافقة على النفقات"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_submitted_digest_template
+msgid "Dear"
+msgstr "عزيزي"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_submitted_digest_template
+msgid ""
+"New expenses are waiting for your approval. You can Review them by following "
+"this link."
+msgstr "توجد نفقات جديدة بانتظار موافقتك. يمكنك مراجعتها عبر النقر على هذا الرابط."
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_submitted_digest_template
+msgid "View expenses"
+msgstr "عرض النفقات"
+
+#. module: expenses_shortcut
+#: model_terms:ir.ui.view,arch_db:expenses_shortcut.expense_submitted_digest_template
+msgid "Powered by"
+msgstr "مشغل بواسطة"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "New expenses waiting for your approval"
+msgstr "النفقات الجديدة التي تنتظر موافقتك"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "%(expense_name)s: %(reason)s"
+msgstr "%(expense_name)s: %(reason)s"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You cannot submit:\n %(reasons)s"
+msgstr "لا يمكنك الإرسال:\n %(reasons)s"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "You cannot post:\n %(reasons)s"
+msgstr "لا يمكنك الترحيل:\n %(reasons)s"
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "Automatically approved — no approver is configured for this employee."
+msgstr "تمت الموافقة تلقائيًا — لا يوجد معتمِد مُهيّأ لهذا الموظف."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid ""
+"Automatic approval was withheld: the approver on file for this expense is "
+"%(approver)s, who submitted it, and no HR officer designated them as their "
+"own Expense Manager. It is waiting for a human approver instead."
+msgstr ""
+"تم حجب الموافقة التلقائية: المعتمِد المسجَّل لهذه النفقة هو %(approver)s، وهو "
+"من قام بإرسالها، ولم يقم أي مسؤول موارد بشرية بتعيينه مديرًا للنفقات لنفسه. "
+"النفقة في انتظار معتمِد بشري بدلًا من ذلك."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid "There is no journal entry to open for this expense yet."
+msgstr "لا يوجد قيد يومية لفتحه لهذه النفقة حتى الآن."
+
+#. module: expenses_shortcut
+#. odoo-python
+#: code:addons/expenses_shortcut/models/hr_expense.py:0
+msgid ""
+"This expense is shown as Paid, but %(amount)s of it has not been paid out "
+"yet."
+msgstr ""
+"هذه النفقة معروضة على أنها مدفوعة، ولكن لا يزال منها %(amount)s غير مدفوع."

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <!-- Hide core's Create Report button on the expense list and kanban views. -->
+
+    <!-- Both templates are needed: kanban is the default view on mobile. -->
+
+    <!-- The mobile New button wrappers are left alone; hiding them would remove the only New button on mobile. -->
+
+    <!-- hr_expense.ListView and hr_expense.KanbanView call displayCreateReport() for layout only and are not changed. -->
+
+    <t t-inherit="hr_expense.ListButtons" t-inherit-mode="extension">
+        <xpath expr="//button[contains(@t-if, 'displayCreateReport')]" position="replace"/>
+    </t>
+
+    <t t-inherit="hr_expense.KanbanButtons" t-inherit-mode="extension">
+        <xpath expr="//button[contains(@t-if, 'displayCreateReport')]" position="replace"/>
+    </t>
+
+</templates>

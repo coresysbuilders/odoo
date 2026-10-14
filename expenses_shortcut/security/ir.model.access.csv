@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_expenses_shortcut_refuse_wizard,access.expenses.shortcut.refuse.wizard,model_expenses_shortcut_refuse_wizard,hr_expense.group_hr_expense_team_approver,1,1,1,0
+access_expenses_shortcut_post_wizard,access.expenses.shortcut.post.wizard,model_expenses_shortcut_post_wizard,account.group_account_invoice,1,1,1,1

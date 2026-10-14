@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- List: batch action buttons and the lifecycle status column -->
+    <record id="hr_expense_view_expenses_analysis_tree_direct" model="ir.ui.view">
+        <field name="name">hr.expense.view.list.analysis.direct</field>
+        <field name="model">hr.expense</field>
+        <field name="inherit_id" ref="hr_expense.hr_expense_view_expenses_analysis_tree"/>
+        <field name="arch" type="xml">
+            <!--
+                The base list is inherited once, which covers My Expenses, the expense
+                dashboard and Expenses Analysis. Header buttons act on the selected
+                records; gate them with groups only, as list header modifiers are not
+                evaluated per record. Each action method validates its own records.
+            -->
+            <xpath expr="//list" position="inside">
+                <header>
+                    <button name="action_submit" type="object" string="Submit"/>
+                    <button name="action_approve" type="object" string="Approve"
+                            context="{'validate_analytic': True}"
+                            groups="hr_expense.group_hr_expense_team_approver"/>
+                    <button name="action_post" type="object" string="Post Journal Entries"
+                            groups="account.group_account_invoice"/>
+                    <button name="action_refuse" type="object" string="Refuse"
+                            groups="hr_expense.group_hr_expense_team_approver"/>
+                </header>
+            </xpath>
+            <!-- Lifecycle status badge -->
+            <xpath expr="//field[@name='state']" position="after">
+                <field name="expense_state" optional="show" widget="badge" readonly="True"
+                       decoration-info="expense_state == 'draft'"
+                       decoration-warning="expense_state == 'submitted'"
+                       decoration-success="expense_state in ['approved', 'posted', 'in_payment', 'paid']"
+                       decoration-danger="expense_state == 'refused'"/>
+            </xpath>
+            <!-- Core status column stays available from the optional columns menu -->
+            <xpath expr="//field[@name='state']" position="attributes">
+                <attribute name="optional">hide</attribute>
+            </xpath>
+            <!-- Highlight draft rows using the lifecycle status -->
+            <xpath expr="//list" position="attributes">
+                <attribute name="decoration-info">expense_state == 'draft'</attribute>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Search: Odoo 19 style filters -->
+    <record id="hr_expense_view_search_direct" model="ir.ui.view">
+        <field name="name">hr.expense.view.search.direct</field>
+        <field name="model">hr.expense</field>
+        <field name="inherit_id" ref="hr_expense.hr_expense_view_search"/>
+        <field name="arch" type="xml">
+            <!--
+                Hide core filters that refer to expense reports or to the legacy
+                status. This runs before the new filters are added, so that each
+                unindexed xpath still has exactly one match.
+            -->
+            <xpath expr="//filter[@name='no_report']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//filter[@name='to_submit']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//filter[@name='submitted']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//filter[@name='approved']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//filter[@name='status']" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <!-- Odoo 19 filters; the last three are reserved for search_default_* context keys -->
+            <xpath expr="//search" position="inside">
+                <filter string="Paid by Company" name="by_company"
+                        domain="[('payment_mode', '=', 'company_account')]"/>
+                <filter string="Paid by Employee" name="by_employee"
+                        domain="[('payment_mode', '=', 'own_account')]"/>
+                <separator/>
+                <filter string="To Submit" name="draft"
+                        domain="[('expense_state', '=', 'draft')]"/>
+                <filter string="Waiting Approval" name="submitted"
+                        domain="[('expense_state', '=', 'submitted')]"/>
+                <filter string="To Post" name="approved"
+                        domain="[('expense_state', '=', 'approved')]"/>
+                <filter string="Waiting Reimbursement" name="to_pay"
+                        domain="[('expense_state', '=', 'approved'), ('payment_mode', '=', 'own_account')]"/>
+                <separator/>
+                <filter string="All to Post" name="all_approved" invisible="True"
+                        domain="[('expense_state', '=', 'approved')]"/>
+                <filter string="All to Pay" name="all_to_pay" invisible="True"
+                        domain="[('expense_state', '=', 'posted'), ('payment_mode', '=', 'own_account')]"/>
+                <filter string="All Paid" name="all_paid" invisible="True"
+                        domain="[('expense_state', 'in', ['in_payment', 'paid']), ('payment_mode', '=', 'own_account')]"/>
+            </xpath>
+            <xpath expr="//search" position="inside">
+                <!-- Group by lifecycle status (replaces core's Status group-by, hidden above) -->
+                <filter name="group_by_expense_state"
+                        string="Status"
+                        context="{'group_by': 'expense_state'}"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Form: Odoo 19 style workflow header, approval details and notices -->
+    <record id="hr_expense_view_form_direct" model="ir.ui.view">
+        <field name="name">hr.expense.view.form.direct</field>
+        <field name="model">hr.expense</field>
+        <field name="inherit_id" ref="hr_expense.hr_expense_view_form"/>
+        <field name="arch" type="xml">
+            <!--
+                Workflow buttons. Visibility is only a hint: every action method
+                validates its own records.
+            -->
+            <xpath expr="//header" position="inside">
+                <button name="action_submit" string="Submit" type="object"
+                        class="oe_highlight o_expense_submit_highlight"
+                        invisible="expense_state != 'draft'"/>
+                <button name="action_approve" string="Approve" type="object" data-hotkey="q"
+                        class="oe_highlight o_expense_approve_highlight"
+                        context="{'validate_analytic': True}"
+                        invisible="not can_approve or expense_state != 'submitted'"/>
+                <!-- Post and Pay are not offered on company-paid expenses, which are settled at approval -->
+                <button name="action_post" string="Post Journal Entries" type="object" data-hotkey="y"
+                        class="oe_highlight o_expense_post_highlight"
+                        invisible="expense_state != 'approved' or payment_mode != 'own_account'"
+                        groups="account.group_account_invoice"/>
+                <button name="action_pay" string="Pay" type="object" data-hotkey="w"
+                        class="oe_highlight o_expense_pay_highlight"
+                        context="{'dont_redirect_to_payments': True}"
+                        invisible="payment_mode == 'company_account' or not direct_is_auto_sheet or not amount_residual"
+                        groups="account.group_account_invoice"/>
+                <button name="action_refuse" string="Refuse" type="object" data-hotkey="x"
+                        class="o_expense_refuse"
+                        invisible="expense_state not in ('submitted', 'approved')"
+                        groups="hr_expense.group_hr_expense_team_approver"/>
+                <!-- Accountants may also reset posted or paid expenses -->
+                <button name="action_reset" string="Reset" type="object" data-hotkey="r"
+                        invisible="not can_reset or expense_state == 'draft'"
+                        groups="account.group_account_invoice"/>
+                <button name="action_reset" string="Reset" type="object" data-hotkey="r"
+                        invisible="not can_reset or expense_state in ('draft', 'posted', 'in_payment', 'paid')"
+                        groups="!account.group_account_invoice"/>
+                <field name="payment_state" invisible="1"/>
+                <field name="account_move_id" invisible="1"/>
+                <field name="amount_residual" invisible="1"/>
+                <field name="direct_is_auto_sheet" invisible="1"/>
+                <!-- One status bar per lifecycle path; exactly one is visible at a time -->
+                <field name="expense_state" widget="statusbar"
+                       statusbar_visible="draft,approved,posted,paid"
+                       invisible="expense_state in ('submitted', 'in_payment', 'refused')"/>
+                <field name="expense_state" widget="statusbar"
+                       statusbar_visible="draft,submitted,approved,posted,paid"
+                       invisible="expense_state != 'submitted'"/>
+                <field name="expense_state" widget="statusbar"
+                       statusbar_visible="draft,approved,posted,in_payment,paid"
+                       invisible="expense_state != 'in_payment'"/>
+                <field name="expense_state" widget="statusbar"
+                       statusbar_visible="draft,approved,posted,paid,refused"
+                       invisible="expense_state != 'refused'"/>
+            </xpath>
+            <!-- Hide core's two status bars on the legacy state (indexed, as core repeats the node) -->
+            <xpath expr="//header/field[@name='state'][1]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//header/field[@name='state'][2]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <!-- Hide core's Create Report and View Report buttons (each appears twice) -->
+            <xpath expr="//header/button[@name='action_submit_expenses'][1]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//header/button[@name='action_submit_expenses'][2]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//header/button[@name='action_view_sheet'][1]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <xpath expr="//header/button[@name='action_view_sheet'][2]" position="attributes">
+                <attribute name="invisible">1</attribute>
+            </xpath>
+            <!-- Notices above the sheet: why approval is unavailable, and any amount still owed -->
+            <xpath expr="//sheet" position="before">
+                <div class="alert alert-warning" role="alert"
+                     invisible="not cannot_approve_reason">
+                    <field name="cannot_approve_reason" readonly="1" nolabel="1"/>
+                </div>
+                <div class="alert alert-warning" role="alert"
+                     invisible="not direct_is_auto_sheet or expense_state != 'paid' or not amount_residual">
+                    <field name="direct_outstanding_notice" readonly="1" nolabel="1"/>
+                </div>
+            </xpath>
+            <!-- Approval details; can_approve and can_reset are used by the header buttons -->
+            <xpath expr="//field[@name='date']" position="after">
+                <field name="approval_state" readonly="1"/>
+                <field name="approval_date" readonly="1"/>
+                <field name="can_approve" invisible="1"/>
+                <field name="can_reset" invisible="1"/>
+            </xpath>
+            <!-- The Odoo 18 expense form has no button box, so one is added -->
+            <xpath expr="//sheet/div[@class='oe_title']" position="before">
+                <div class="oe_button_box" name="button_box"/>
+            </xpath>
+            <!-- Journal entry smart button -->
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_account_move" type="object"
+                        class="oe_stat_button" icon="fa-bars"
+                        invisible="not account_move_id"
+                        groups="account.group_account_invoice">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Journal Entry</span>
+                    </div>
+                </button>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

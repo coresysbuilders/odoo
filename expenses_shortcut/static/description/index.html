@@ -1,0 +1,156 @@
+<!--
+    Apps-store description page for Expenses Shortcut.
+    (c) 2026 CoreSys Builders. Inline styles only, so the page survives Odoo's
+    description sanitizer. Relative image paths resolve to static/description/.
+-->
+
+<div style="max-width:820px;margin:0 auto;padding:0 18px;color:#23282e;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.66;">
+
+  <img src="cover.png" alt="Expenses Shortcut by CoreSys Builders"
+       style="display:block;width:100%;border:1px solid #e3e6ea;border-radius:4px;margin:8px 0 4px;"/>
+
+  <h1 style="font-size:30px;line-height:1.2;font-weight:700;color:#15191e;margin:30px 0 6px;letter-spacing:-.01em;">Expenses without expense reports</h1>
+  <div style="width:54px;height:3px;background:#0052fe;border-radius:2px;margin:14px 0 18px;"></div>
+  <p style="font-size:18px;color:#444b53;margin:0 0 12px;">Employees submit an expense, a manager approves it, accounting posts and pays it. Every step happens on the expense itself, the way Odoo 19 works, on your Odoo 18 database.</p>
+
+  <p style="margin:12px 0;">In standard Odoo 18 every expense has to be wrapped in an expense report before anything can happen to it. For most teams that report is just an extra form to fill in and an extra screen to explain. Expenses Shortcut removes it from the user's point of view: the buttons, statuses and approvals move onto the expense, and the reports menus disappear. Odoo's own accounting is still used underneath, so journal entries, payments and reconciliation behave exactly as they do today.</p>
+
+  <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Highlights</h2>
+  <p style="margin:14px 0;"><b>One expense, one decision.</b> Managers approve or refuse each expense on its own, so one questionable receipt no longer holds up a whole report.</p>
+  <p style="margin:14px 0;"><b>Familiar Odoo 19 statuses.</b> Draft, Submitted, Approved, Posted, In Payment, Paid and Refused, shown on the form, in the list and in filters.</p>
+  <p style="margin:14px 0;"><b>Built on standard accounting.</b> Posting and payment go through Odoo's own vendor bill and payment flows. No accounting logic is rewritten, and uninstalling the module brings back the standard expense reports.</p>
+
+  <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">How it works</h2>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#0052fe;font-weight:700;margin-right:8px;">1.</span>See every expense and its status in one list</h3>
+  <p style="margin:10px 0;">The expense list shows each expense with its own status. Select several and submit, approve, post or refuse them in one click. If a selected expense isn't in the right state, the module names it instead of failing silently.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/01-expense-list.jpg" alt="Expense list with statuses and batch actions" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Batch Submit, Approve, Post and Refuse from the list, with a status on every line.</figcaption>
+  </figure>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#0052fe;font-weight:700;margin-right:8px;">2.</span>Submit straight from the expense</h3>
+  <p style="margin:10px 0;">An employee records the expense, attaches the receipt and clicks <b>Submit</b>. There is no report to create and no report name to invent. The status bar shows where the expense is at a glance.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/02-submit.jpg" alt="Draft expense with the Submit button" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A draft expense: Submit is right on the form.</figcaption>
+  </figure>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#0052fe;font-weight:700;margin-right:8px;">3.</span>Approve with an activity, not a hunt</h3>
+  <p style="margin:10px 0;">The employee's expense approver gets an <b>Expense Approval</b> activity on the expense itself, and can approve or refuse it from the form. Approvers can't approve their own expenses, and the activity is closed automatically whichever way the decision is taken.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/03-approve.jpg" alt="Submitted expense waiting for approval" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A submitted expense with Approve and Refuse, and the approval activity in the chatter.</figcaption>
+  </figure>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#0052fe;font-weight:700;margin-right:8px;">4.</span>Refuse with a reason</h3>
+  <p style="margin:10px 0;">Refusing asks for a reason. The employee is notified with that reason and the name of their expense, and the refusal stays in the chatter.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/04-refuse.jpg" alt="Refuse dialog asking for a reason" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The refusal reason is required and is sent to the employee.</figcaption>
+  </figure>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#0052fe;font-weight:700;margin-right:8px;">5.</span>Post the journal entry from the expense</h3>
+  <p style="margin:10px 0;">Accountants click <b>Post Journal Entries</b> and choose the journal and accounting date. Odoo 18 already creates the draft entry when the expense is approved; posting completes that same entry, so you never end up with a duplicate.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/05-post.jpg" alt="Post dialog with journal and accounting date" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Choose the journal and accounting date when posting.</figcaption>
+  </figure>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#0052fe;font-weight:700;margin-right:8px;">6.</span>Pay and follow it to Paid</h3>
+  <p style="margin:10px 0;">Register the payment from the expense with Odoo's standard payment dialog. The status follows the journal entry to In Payment and Paid, and a <b>Journal Entry</b> button takes you to the accounting side. If an expense shows as Paid while part of it is still owed, the form says so and shows the outstanding amount.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/06-paid.jpg" alt="Paid expense with its journal entry" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A paid expense, with approval details and a link to its journal entry.</figcaption>
+  </figure>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#0052fe;font-weight:700;margin-right:8px;">7.</span>Ready for Arabic and right-to-left</h3>
+  <p style="margin:10px 0;">Every label, button, message and email the module adds is translatable, and a complete Arabic translation is included. The screens work right-to-left like the rest of Odoo.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/07-arabic-rtl.jpg" alt="Expense list in Arabic, right to left" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The same list in Arabic.</figcaption>
+  </figure>
+
+  <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Details</h2>
+  <div style="display:flex;flex-wrap:wrap;gap:34px;">
+    <div style="flex:1 1 300px;min-width:0;">
+      <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">What changes for users</h3>
+      <ul style="margin:10px 0;padding-left:20px;">
+        <li style="padding:3px 0;">Submit, Approve, Refuse, Reset, Post and Pay on the expense form</li>
+        <li style="padding:3px 0;">The same actions in batch from the expense list</li>
+        <li style="padding:3px 0;">Odoo 19 status bar, list badges and search filters</li>
+        <li style="padding:3px 0;">Approval state and approval date on every expense</li>
+        <li style="padding:3px 0;">A weekly email to each approver listing the expenses waiting for them, in the approver's language</li>
+        <li style="padding:3px 0;">Expenses of employees without an approver are approved automatically on submit</li>
+        <li style="padding:3px 0;">Expense report menus and buttons hidden for every user, including administrators</li>
+      </ul>
+    </div>
+    <div style="flex:1 1 300px;min-width:0;">
+      <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">How it stays safe</h3>
+      <ul style="margin:10px 0;padding-left:20px;">
+        <li style="padding:3px 0;">Uses Odoo's own report model behind the scenes, one hidden report per expense</li>
+        <li style="padding:3px 0;">Approval fields can't be edited directly by users, only through the workflow</li>
+        <li style="padding:3px 0;">An expense whose journal entry is posted can't be reset to draft</li>
+        <li style="padding:3px 0;">Each action checks the user's rights on the server, not just in the view</li>
+        <li style="padding:3px 0;">Two people submitting the same expense at once still produce one entry</li>
+        <li style="padding:3px 0;">Existing expense reports are left untouched</li>
+        <li style="padding:3px 0;">Uninstalling restores the standard menus and buttons</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Requirements</h2>
+  <ul style="margin:12px 0;padding-left:20px;">
+    <li style="padding:3px 0;">Odoo 18.0 (tested on Community)</li>
+    <li style="padding:3px 0;">Depends only on the standard <code>hr_expense</code> module</li>
+    <li style="padding:3px 0;">No extra Python packages, no external services, no data sent anywhere</li>
+  </ul>
+
+  <div style="border-left:3px solid #0052fe;background:#e4eefc;padding:12px 16px;margin:16px 0;border-radius:0 4px 4px 0;">
+    <p style="margin:0;font-size:15px;color:#06152c;line-height:1.6;">Before installing, finish or reset any expense reports that are still open. Set an expense approver (or a manager) on your employees before going live. Expenses of employees with no approver are approved automatically on submit, and in Odoo 18 approval also creates the draft vendor bill. The module logs how many employees have no approver when it is installed.</p>
+  </div>
+
+  <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">FAQ</h2>
+  <p style="margin:12px 0 14px;color:#5a616a;font-size:15px;">Click a question to show the answer.</p>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">What happens to the expense reports I already have?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">They are not changed. Existing reports, their journal entries and payments stay exactly as they are, and draft expenses that are not in a report simply follow the new flow.</p>
+      <p style="margin:0 0 12px;">An expense that is already part of a report with several lines can't be approved or refused on its own, because that would also act on the other lines. Finish or reset open reports before installing; reports that are already paid need nothing.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Who approves an expense?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">The same person as in standard Odoo: the employee's expense approver, or otherwise their manager. Nobody can approve their own expense.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Why is a draft journal entry created at approval?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">That is how Odoo 18 itself works, and the module keeps it so that accounting stays standard. Posting then completes that draft entry with the journal and date you choose. Odoo 19 creates the entry at posting instead; the result for the accountant is the same.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Which rights are needed to post and pay?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Posting and payment follow Odoo's standard accounting rights. Registering a payment needs the Billing (or Accountant) access level, as in standard Odoo.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can I go back to expense reports later?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Yes. Uninstall the module and the standard expense report menus and buttons come back as they were. Expenses processed while the module was installed keep their reports, journal entries and payments.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">What support is available?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Questions and bug reports are welcome at <a href="mailto:info@coresysbuilders.com" style="color:#0052fe;">info@coresysbuilders.com</a>. Help with configuration or adapting the workflow to your company is available as a paid service.</p>
+    </div>
+  </details>
+
+  <hr style="border:0;border-top:1px solid #e6e9ec;margin:36px 0 18px;"/>
+  <p style="font-size:13.5px;color:#80878f;line-height:1.6;"><b style="color:#5a616a;">CoreSys Builders.</b> &copy; 2026. Licensed under the GNU Lesser General Public License v3 (LGPL-3). Questions and feature requests are welcome.</p>
+
+</div>

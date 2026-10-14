@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Post Expenses dialog -->
+
+    <!-- 1. The dialog form itself. -->
+    <record id="expenses_shortcut_post_wizard_view_form" model="ir.ui.view">
+        <field name="name">expenses.shortcut.post.wizard.form</field>
+        <field name="model">expenses.shortcut.post.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Post Expenses">
+                <field name="expense_ids" invisible="1"/>
+                <group>
+                    <field name="employee_journal_id" string="Journal"/>
+                    <field name="accounting_date" string="Accounting date"/>
+                </group>
+                <footer>
+                    <button string="Post Expenses" name="action_post_entry" type="object" class="oe_highlight" data-hotkey="q"/>
+                    <button string="Cancel" class="oe_link" special="cancel" data-hotkey="x"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <!-- 2. The act_window the expense-side Post action returns. -->
+    <record id="expenses_shortcut_post_wizard_action" model="ir.actions.act_window">
+        <field name="name">Post Expenses</field>
+        <field name="res_model">expenses.shortcut.post.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="expenses_shortcut_post_wizard_view_form"/>
+        <field name="target">new</field>
+        <field name="context">{'dialog_size': 'medium'}</field>
+    </record>
+
+</odoo>

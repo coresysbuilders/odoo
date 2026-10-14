@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Expense Report entry points on other models: the vendor bill, the
+        payment and the department kanban.
+    -->
+
+    <!-- Vendor bill: Expense Report smart button -->
+    <record id="view_move_form_direct_conceal" model="ir.ui.view">
+        <field name="name">account.move.view.form.direct</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="hr_expense.view_move_form_inherit_expense"/>
+        <field name="arch" type="xml">
+            <xpath expr="//button[@name='action_open_expense_report']" position="replace"/>
+        </field>
+    </record>
+
+    <!-- Payment: Expense Report smart button -->
+    <record id="view_account_payment_form_direct_conceal" model="ir.ui.view">
+        <field name="name">account.payment.view.form.direct</field>
+        <field name="model">account.payment</field>
+        <field name="inherit_id" ref="hr_expense.view_payment_form_inherit_expense"/>
+        <field name="arch" type="xml">
+            <xpath expr="//button[@name='action_open_expense_report']" position="replace"/>
+        </field>
+    </record>
+
+    <!--
+        Department kanban: expense report link and menu entry. The action
+        references resolve to database ids, and each wrapper goes with its link.
+    -->
+    <record id="hr_department_view_kanban_direct_conceal" model="ir.ui.view">
+        <field name="name">hr.department.view.kanban.direct</field>
+        <field name="model">hr.department</field>
+        <field name="inherit_id" ref="hr_expense.hr_department_view_kanban"/>
+        <field name="arch" type="xml">
+            <xpath expr="//a[@name='%(hr_expense.action_hr_expense_sheet_department_to_approve)d']/.." position="replace"/>
+            <xpath expr="//a[@name='%(hr_expense.action_hr_expense_sheet_department_filtered)d']/.." position="replace"/>
+        </field>
+    </record>
+
+</odoo>
