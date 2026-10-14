@@ -71,11 +71,11 @@ class ApprovalDelegation(models.Model):
             # when record rules would otherwise hide it. This create-time check
             # has a narrow concurrency window — two reciprocal delegations
             # committed in parallel transactions can each miss the other. That
-            # is an accepted low-risk MVP tradeoff: single-hop expansion (D-20)
+            # is an accepted low-risk tradeoff: single-hop expansion
             # means even a slipped A<->B pair cannot form a transitive chain,
             # and each side still acts only within their delegator's frozen
             # authority. The interval-overlap predicate (S1 <= E2 AND S2 <= E1)
-            # is retained (review Codex-MEDIUM; refreshes threat T-03-01).
+            # is retained.
             reciprocal = deleg.sudo().search([
                 ('id', '!=', deleg.id),
                 ('active', '=', True),
@@ -103,8 +103,8 @@ class ApprovalDelegation(models.Model):
     @api.constrains('delegate_id', 'active')
     def _check_delegate_valid(self):
         # Reject an invalid delegate at save, not only at resolution, so a
-        # dormant record cannot activate later on a group change (Codex-MEDIUM;
-        # D-26). The delegate must be an active, internal (non-share) Approval
+        # dormant record cannot activate later on a group change.
+        # The delegate must be an active, internal (non-share) Approval
         # Approver — Approver implies User and keeps the Approve/Refuse button
         # visible (OQ1 locked floor).
         for deleg in self:
