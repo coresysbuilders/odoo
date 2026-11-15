@@ -263,6 +263,40 @@ class TestPublishedClaims(TransactionCase):
                 self.assertTrue(new in _flat(text),
                                 '%s lacks %r' % (name, new))
 
+    def test_copy_covers_companies_routing_recovery_and_privacy(self):
+        # The store page and both guides name the screens a new admin needs
+        # for companies, Page routing, recovery and personal data, with the
+        # labels the views use.
+        root = self._root()
+        store = 'static/description/index.html'
+        guide = 'static/doc/setup_guide.html'
+        needed = {
+            store: ('Company Override', 'Lead Routing', 'Erase Personal Data',
+                    'Data retention', 'Webhook Events', 'Removed Meta Leads',
+                    'Does it work with several companies?'),
+            guide: ('Company Override', 'Lead Company', 'Create As',
+                    'Default Salesperson', 'Default Sales Team',
+                    'System Health', 'Retry Selected', 'Resume Lead Reads',
+                    'Removed Meta Leads', 'Erase Personal Data',
+                    'Sync log retention', 'Processed webhook rows',
+                    'Failed rows'),
+        }
+        surfaces = [(rel, _read(os.path.join(root, rel))) for rel in needed]
+        surfaces += [(name, text) for name, text in self._doc_sources()
+                     if name == 'docs/connecting-to-meta.md']
+        for name, text in surfaces:
+            flat = _flat(text)
+            with self.subTest(surface=name):
+                for phrase in needed.get(name, needed[guide]):
+                    self.assertTrue(phrase in flat,
+                                    '%s lacks %r' % (name, phrase))
+        ids = ('companies', 'routing', 'health', 'recovery',
+               'archived-pages', 'privacy', 'troubleshooting')
+        text = _read(os.path.join(root, guide))
+        for anchor in ids:
+            with self.subTest(anchor=anchor):
+                self.assertIn('id="%s"' % anchor, text)
+
     def test_manifest_summary_says_at_most_one(self):
         summary = ' '.join(self._manifest()['summary'].split())
         phrase = 'at most one CRM lead per Meta lead ID'

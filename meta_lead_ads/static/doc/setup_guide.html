@@ -53,6 +53,16 @@ credential comes from in Meta.</p>
 </table>
 <p>The App ID and secret live in the <b>Meta for Developers</b> dashboard; the
 token comes from your <b>Business Settings</b>. They are two different places.</p>
+<p>On a database with several companies the first screen also has a
+<b>Company</b> field; see <a href="#companies">Which company receives the
+leads</a>. A Meta Admin who can't open Settings finds the same section, with
+the <b>Connect to Meta</b> button, under <b>Meta Leads &rarr; Settings</b>.</p>
+<p>After the connection steps, this guide covers
+<a href="#companies">companies</a>, <a href="#routing">Page routing</a>,
+<a href="#health">System Health</a>, <a href="#recovery">recovering failed
+leads</a>, <a href="#archived-pages">archived Pages</a> and
+<a href="#privacy">personal data and retention</a>, then
+<a href="#troubleshooting">troubleshooting</a>.</p>
 
 <h2>1. App ID and App Secret</h2>
 <ol>
@@ -161,6 +171,13 @@ the menu.</p>
 </ol>
 <p>Then, back in the Odoo wizard, click <b>Subscribe</b> to complete the page
 level.</p>
+<p>The wizard's <b>Webhook Subscription</b> status reads <i>Subscribed</i> only
+when your app is subscribed to the Page's <code>leadgen</code> field.
+<i>Another app subscribed</i> means a different Meta app gets the Page's
+leads but yours doesn't, <i>Not subscribed</i> means your app doesn't get them,
+and <i>Couldn't check</i> means Odoo couldn't read the status from Meta. A hint
+under the status says what to do; click <b>Refresh status</b> to ask Meta
+again.</p>
 <div class="tip"><b>Can't find Webhooks at all?</b> Make sure you are on
 <b>developers.facebook.com</b> (the App dashboard), not
 <b>business.facebook.com</b> (Business Suite), and that the app is a
@@ -190,6 +207,198 @@ is fixed.</p>
 Meta</b> and run it through to <b>Finish</b> again. It reuses the same verify
 token and shows both values again, so a webhook you already configured in Meta
 stays valid.</p>
+
+<h2 id="companies">Which company receives the leads</h2>
+<p>This only matters on a database with several companies; the company fields
+below are shown to users who work in more than one company.</p>
+<ol>
+  <li><b>When you connect.</b> On the first screen of <b>Connect to Meta</b>,
+      set <b>Company</b> to the company that should receive the leads of this
+      connection. It must be a company you belong to, and it must be selected
+      in the company switcher.</li>
+  <li><b>For an account already connected.</b> Running the wizard again
+      doesn't change the account's company, even if you pick another one on
+      its first screen; its last screen says so. To change it, open <b>Settings &rarr; Meta Lead Ads &rarr; Open
+      Accounts</b>, open the account and change <b>Company</b>.</li>
+  <li><b>For one Page.</b> On the account, click the <b>Pages</b> button and
+      open the Page. Set <b>Company Override</b> to send this Page's leads to
+      another company, or leave it empty to use the account's company.
+      <b>Lead Company</b> shows where the Page's leads go.</li>
+</ol>
+<p>The lead company decides more than where a lead is created. Duplicate checks
+look only at leads of that company or with no company. New-lead notifications
+go only to users who can open the lead. The <b>Meta Leads</b> dashboard counts
+the companies selected in the company switcher. A change of company applies to
+leads that arrive after it; leads already in CRM keep their company.</p>
+
+<h2 id="routing">Routing a Page's leads</h2>
+<p>Open the Page (<b>Settings &rarr; Meta Lead Ads &rarr; Open Accounts</b>,
+open the account, then the <b>Pages</b> button). The <b>Lead Routing</b>
+section is shown to Meta Admins:</p>
+<table>
+  <tr><th>Field</th><th>What it does</th></tr>
+  <tr><td><b>Create As</b></td><td>New leads from this Page are created as a
+      <b>Lead</b> or as an <b>Opportunity</b>. A new Page starts on Lead, or on
+      Opportunity when the Leads feature is turned off in CRM. A submission
+      matched to an existing lead keeps that lead's type.</td></tr>
+  <tr><td><b>Default Salesperson</b></td><td>Assigned to new leads from this
+      Page. It must be an active internal user with Sales rights who can work
+      in the Page's lead company. Leave it empty and new leads arrive
+      unassigned.</td></tr>
+  <tr><td><b>Default Sales Team</b></td><td>Set on new leads from this Page. It
+      must be active, and belong to the lead company or to no company. With no
+      salesperson set, the team's own assignment rules can pick the lead up.
+      Left empty, a lead with a default salesperson gets that salesperson's
+      team.</td></tr>
+</table>
+<p>When a submission matches an existing open lead, that lead only gets the
+salesperson and team if it has none. If a default stops fitting later, for
+example because the user was archived, lost Sales rights or left the company,
+or the team doesn't use leads or the pipeline, the Page form shows a warning
+that says what is wrong and what new leads get until you change it.</p>
+<p>Form answers can't fill the lead's workflow fields: the title, salesperson,
+sales team, stage, probability, priority, expected and recurring revenue,
+expected closing, lost reason, customer, the UTM campaign, source and medium,
+or any other link to a user or contact. A field mapping onto one of them is
+refused. Mappings like that from an older version were switched off on upgrade;
+the <b>Field Mappings</b> list shows them under the <b>Disabled</b> filter, with
+the reason.</p>
+
+<h2 id="health">Reading System Health</h2>
+<p>Open <b>Meta Leads &rarr; Dashboard</b>. The <b>System Health</b> card has
+four indicators, each with a status and a short caption. They don't change
+with the selected period. <b>Webhook</b>, <b>Queue drain</b> and
+<b>Backfill</b> cover the whole database, because there is one webhook and one
+set of scheduled jobs; <b>Token</b> follows the companies selected in the
+company switcher.</p>
+<table>
+  <tr><th>Indicator</th><th>Status</th><th>What it means</th></tr>
+  <tr><td rowspan="5"><b>Webhook</b></td><td><i>Running</i></td><td>A webhook
+      lead was processed in the last 24 hours.</td></tr>
+  <tr><td><i>Quiet</i> or <i>No webhook leads yet</i></td><td>No webhook lead
+      was processed in the last 24 hours, or none is recorded yet. See
+      <a href="#troubleshooting">No leads arriving</a>.</td></tr>
+  <tr><td><i>Receiving, but failing</i></td><td>Webhook leads failed after the
+      last success (or in the last 7 days, when no success is recorded). Open
+      the Sync Log for the error, then see
+      <a href="#recovery">Recovering failed leads</a>.</td></tr>
+  <tr><td><i>Falling behind</i></td><td>Webhook events have waited more than
+      10 minutes for the queue drain. Leads Meta asked Odoo to hold back are
+      not counted.</td></tr>
+  <tr><td>Caption: <i>leads waiting on an archived Page</i></td><td>Leads held
+      because their Page is archived. They don't turn the indicator red; see
+      <a href="#archived-pages">Archived Pages</a>.</td></tr>
+  <tr><td rowspan="2"><b>Queue drain</b> and <b>Backfill</b></td><td><i>Running</i>,
+      <i>Waiting for first run</i> or <i>Falling behind</i></td><td>The job
+      runs. A fresh install waits a few minutes for the first run, and
+      <i>Falling behind</i> (queue drain only) means webhook events are
+      waiting.</td></tr>
+  <tr><td><i>Not running</i> or <i>Disabled</i></td><td>The job hasn't run
+      when it should have, or its scheduled action is turned off. Click
+      <b>Check Scheduler</b> on the Meta account; it names the job that
+      stopped.</td></tr>
+  <tr><td><b>Token</b></td><td><i>Valid</i>, <i>Expiring soon</i> or
+      <i>Invalid</i></td><td>The worst token among the active accounts.
+      <i>Expiring soon</i> means one expires within 7 days; generate a new
+      token and run <b>Connect to Meta</b> with it. <i>Invalid</i> also shows
+      when there is no active account. The caption says when the tokens were
+      last checked.</td></tr>
+</table>
+<p>The Meta account form shows the same scheduler status as a badge next to its
+connection status, with <b>Test Connection</b> and <b>Check Scheduler</b>
+buttons.</p>
+
+<h2 id="recovery">Recovering failed leads</h2>
+<p>A lead that fails to come in leaves a <b>Failed</b> row in the Sync Log
+(<b>Settings &rarr; Meta Lead Ads &rarr; Open Sync Logs</b>) with its Page,
+Meta Lead ID and <b>Error Message</b>. Webhook deliveries also have a row in
+the webhook queue, <b>CRM &rarr; Configuration &rarr; Webhook Events</b>.</p>
+<ol>
+  <li><b>Fix the cause first</b> if the error names one: renew the token with
+      <b>Connect to Meta</b>, add a missing permission in Meta, or reactivate
+      the Page.</li>
+  <li><b>Retry from the Sync Log.</b> Open the row and click <b>Retry</b>, or
+      select several rows and choose <b>Actions &gt; Retry Selected</b>. Each
+      click handles a limited batch; the notification says how many succeeded,
+      how many still failed and how many are left for another click.</li>
+  <li><b>Or retry from the webhook queue.</b> <b>Retry</b> works the same on a
+      failed event. On an event that is waiting for Meta (its <b>Next
+      Attempt</b> is set), Retry ends the wait now, and with it any lead read
+      pause on its Page.</li>
+  <li><b>A row without a Meta Lead ID</b> is about a whole lead form, for
+      example a listing Meta returned incomplete. Retry on it asks the backfill
+      to read that form again.</li>
+</ol>
+<p><b>Rate limits.</b> When Meta asks Odoo to slow down, the event waits until
+the time Meta gives, up to a day. Meta can also pause lead reads for one Page
+(shown as <b>Lead Reads Paused Until</b> on the Page form) or for the whole app
+(<b>Lead reads paused</b> in the Meta Lead Ads settings). Leads resume on their
+own when the pause ends. <b>Resume Lead Reads</b> on the Page, or <b>Resume lead
+reads</b> in the settings, ends the pause sooner, but reading again too early
+can make Meta extend the block.</p>
+<p><b>Retry is refused</b> for a lead whose personal data was erased, and it
+waits while the lead's Page is archived (see below).</p>
+<p><b>Leads deleted or merged in Odoo.</b> The webhook, Retry and the scheduled
+syncs skip them, so they don't come back on their own.
+<b>CRM &rarr; Configuration &rarr; Removed Meta Leads</b> lists them for 200
+days. <b>Restore</b> fetches a deleted lead from Meta again; a merged lead
+can't be restored while the lead it was merged into exists, and an erased one
+can't be restored.</p>
+<p><b>A single lead by ID.</b> <b>CRM &rarr; Configuration &rarr; Ingest Meta
+Lead by ID</b> fetches one Meta lead through the same ingestion.</p>
+
+<h2 id="archived-pages">Archived Pages</h2>
+<p>Archiving a Page in Odoo stops the backfill from reading its forms. Webhook
+leads for it are not fetched: they wait in the Sync Log as failed until you
+reactivate the Page, with the message <i>"This Page is archived in Odoo.
+Reactivate it, then Retry."</i> Retry is refused while the Page stays
+archived. The dashboard's <b>Webhook</b> caption counts these leads without
+turning the indicator red.</p>
+<p>To bring the Page back, unarchive it, or run <b>Connect to Meta</b> and tick
+it on the Pages step (archived Pages start unticked). It returns with its
+routing and settings. On the next step you choose which of its archived lead
+forms come back, with their field mappings and sync position. The held leads
+then go back in the queue and are fetched again on their own; their rows say
+<i>"Queued again after its Page was reactivated."</i></p>
+
+<h2 id="privacy">Personal data and retention</h2>
+<p><b>Who sees what.</b> The <b>Meta Answers</b> tab of a lead follows the
+lead's access rules: someone who can't open the lead can't read its answers
+either. Answers and names are shown as text, not HTML, in the lead description
+and in notifications. Raw Meta payloads, the App Secret and tokens are shown to
+Meta Admins only.</p>
+<p><b>Erasing a person's data.</b> A Meta Admin can:</p>
+<ul>
+  <li>click <b>Erase Personal Data</b> on a Meta lead, or select up to 200
+      leads in <b>CRM &rarr; Leads</b> or the Pipeline list view and click
+      <b>Erase Personal Data</b>. Contact details, mapped answers, the Meta
+      answer block, crm's merge notes and the stored Meta payloads are
+      removed, for the selected leads and for Meta leads merged into them. The
+      stage, salesperson, revenue and campaign attribution stay, and the linked
+      contact and hand-written messages are not changed, so handle those
+      separately. The lead shows <b>Personal Data Erased On</b>, and it can't
+      be retried;</li>
+  <li>erase sync rows and webhook rows that didn't become a lead with the
+      <b>Erase Personal Data</b> button in the Sync Logs or Webhook Events
+      list, or on the row itself. The automatic syncs won't bring that lead
+      back.</li>
+</ul>
+<p>Deleting a Meta lead in Odoo also removes its stored Meta payloads.</p>
+<p><b>Retention.</b> Under <b>Settings &rarr; Meta Lead Ads &rarr; Data
+retention</b>:</p>
+<table>
+  <tr><th>Setting</th><th>What it removes</th><th>Default</th></tr>
+  <tr><td><b>Sync log retention</b></td><td>Successful and skipped sync rows.
+      The dashboard keeps their counts.</td><td>14 days</td></tr>
+  <tr><td><b>Processed webhook rows</b></td><td>Webhook events that were
+      processed. Waiting events are kept.</td><td>14 days</td></tr>
+  <tr><td><b>Failed rows</b></td><td>Failed webhook events, and the stored
+      Meta data of failed sync rows. The failed sync row itself stays and can
+      still be retried while Meta holds the lead.</td><td>90 days</td></tr>
+</table>
+<p>Each period is from 1 to 3650 days, and the cleanup runs daily. Retention
+covers the module's logs and queue only: leads stay in CRM until you erase or
+delete them.</p>
 
 <h2 id="one-app">One Meta app per database</h2>
 <p>Odoo checks the signature of every webhook call from Meta with one App
@@ -234,7 +443,7 @@ Studio, also owns is kept. If you customized a view to show a promoted field,
 check that view afterwards: Odoo removes the field but can leave the view
 pointing at it, so edit the view to take the field out.</p>
 
-<h2>Troubleshooting</h2>
+<h2 id="troubleshooting">Troubleshooting</h2>
 <ul>
   <li><b>"That token is invalid or expired."</b> The token was mistyped, has
       expired, or lacks the required permissions. Generate a fresh System User
@@ -264,6 +473,33 @@ pointing at it, so edit the view to take the field out.</p>
   <li><b>Leads of an archived Page.</b> Leads for a Page you archived in Odoo
       wait in the Sync Log as failed until you reactivate the Page; they are
       then fetched again on their own.</li>
+  <li><b>Webhook or Queue drain shows <i>Falling behind</i>.</b> Webhook
+      events have waited more than 10 minutes. Check that <b>Queue drain</b>
+      is running. If Meta paused lead reads, the Page shows <b>Lead Reads
+      Paused Until</b> and the settings show <b>Lead reads paused</b>; leads
+      resume when the pause ends (see <a href="#recovery">Rate
+      limits</a>).</li>
+  <li><b>Retry says some rows were held back because Meta asked to pause lead
+      reads.</b> Wait for the pause to end, or resume lead reads on the Page
+      or in the settings.</li>
+  <li><b>"The personal data of this Meta lead was erased, so it can't be
+      retried."</b> An erased lead isn't fetched again. If the person submits
+      the form again, Meta sends a new lead.</li>
+  <li><b>A lead you deleted doesn't come back.</b> Deleted and merged leads
+      are skipped on purpose. Restore a deleted one from <b>CRM &rarr;
+      Configuration &rarr; Removed Meta Leads</b>.</li>
+  <li><b>Leads land in the wrong company.</b> Check <b>Company</b> on the Meta
+      account and <b>Company Override</b> on the Page; <b>Lead Company</b> on
+      the Page shows where its leads go. Leads already created keep their
+      company.</li>
+  <li><b>New leads arrive without a salesperson or team.</b> Set
+      <b>Default Salesperson</b> and <b>Default Sales Team</b> on the Page. If
+      they are set, read the warning on the Page form: the user may be
+      archived, lack Sales rights or not work in the lead company.</li>
+  <li><b>A field mapping was switched off.</b> Its target is a workflow field
+      that form answers can no longer fill. Open the <b>Field Mappings</b>
+      list with the <b>Disabled</b> filter to see the reason, and map the
+      question to another field.</li>
 </ul>
 
 <footer><b>CoreSys Builders.</b> Questions: info@coresysbuilders.com</footer>

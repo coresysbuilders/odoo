@@ -17,15 +17,21 @@
 
   <p style="margin:12px 0;">This module connects Meta Lead Ads to your CRM through a signature-verified webhook for fast delivery and a scheduled backfill that re-checks each connected form, designed so a lead a missed webhook didn't deliver is picked up on the next run, as long as Meta still holds it. Both paths run through one ingestion service, and each Meta lead ID can create only one CRM lead, so webhook, backfill and Meta re-sends don't pile up duplicates.</p>
 
+  <p style="margin:12px 0;">Each Page's leads land in the company, sales team and salesperson you choose for it. A lead that fails to come in stays in the Sync Log with its error, ready to retry once the cause is fixed, and a Meta Admin can erase the personal data Meta brought into Odoo.</p>
+
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Highlights</h2>
   <p style="margin:14px 0;"><b>Fast, with a safety net.</b> A signature-verified webhook hands each new lead to a queue that Odoo works through every minute; a backfill cron re-sweeps each form on a schedule. One CRM lead per Meta lead ID is enforced by a database constraint, not a best-effort check.</p>
   <p style="margin:14px 0;"><b>Attribution you can act on.</b> The campaign, ad set, ad, form and Page names and IDs are recorded on each lead when Meta provides them, and mapped to Odoo UTM, so you can see which ad produced which opportunity. A name Meta doesn't return straight away is looked up again later.</p>
-  <p style="margin:14px 0;"><b>Careful with credentials.</b> The App Secret and access tokens are restricted to administrators. The webhook checks Meta's signature over the raw request body before parsing anything, and the module doesn't write tokens or the App Secret to its logs.</p>
+  <p style="margin:14px 0;"><b>Ready for several companies.</b> Each Meta account sends its leads to the company you pick, and a Page can override it. Duplicate checks skip leads of other companies, new-lead alerts go only to users who can open the lead, and the dashboard counts the companies selected in the company switcher.</p>
+  <p style="margin:14px 0;"><b>The right owner from the start.</b> On each Page, choose a default salesperson, a sales team, and whether new leads arrive as leads or as opportunities. Form answers can't fill workflow fields such as the salesperson, team, stage or expected revenue, so the person filling in the form doesn't decide who owns the lead.</p>
+  <p style="margin:14px 0;"><b>Recovery you can see.</b> A failed lead keeps its Page and Meta lead ID in the Sync Log, and you can retry it from there or from the webhook queue. When Meta asks Odoo to slow down, the queue waits as long as Meta asks, up to a day. Leads of a Page you archived are held and fetched again once you reactivate it.</p>
+  <p style="margin:14px 0;"><b>Privacy controls.</b> Meta form answers follow the lead's access rules and are shown as plain text. A Meta Admin can erase the personal data Meta brought into a lead, stored copies in the sync log and webhook queue included, and log and queue rows are cleaned up after a retention period you set.</p>
+  <p style="margin:14px 0;"><b>Careful with credentials.</b> The App Secret and access tokens are restricted to administrators. The webhook checks Meta's signature over the raw request body before parsing anything, and the module doesn't write tokens or the App Secret to its logs. Token- and secret-shaped values are masked in the Meta error text it stores, and webhook requests larger than 64 KiB are refused.</p>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">How it works</h2>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">1.</span>Connect your Meta app</h3>
-  <p style="margin:10px 0;">Under <b>Settings &rarr; Meta Lead Ads</b>, the Connect wizard takes your App ID, App Secret and access token, validates them, and discovers your Pages and lead forms. Accounts, field mappings, sync logs and lead naming all live in one place.</p>
+  <p style="margin:10px 0;">Under <b>Settings &rarr; Meta Lead Ads</b>, the Connect wizard takes your App ID, App Secret and access token, validates them, and discovers your Pages and lead forms. On a database with several companies, you also pick the company that receives the connection's leads. Accounts, field mappings, sync logs, lead naming, notifications and data retention all live in one place, and Meta Admins without access to Settings find the same section under <b>Meta Leads &rarr; Settings</b>.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/02-settings.jpg" alt="Meta Lead Ads settings in Odoo" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The settings page &mdash; connect an account, then manage accounts, mappings and logs from here.</figcaption>
@@ -38,58 +44,78 @@
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Connection status on the account form, including a live scheduler check.</figcaption>
   </figure>
 
-  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">3.</span>Read every lead in context</h3>
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">3.</span>Route each Page</h3>
+  <p style="margin:10px 0;">Each Page has its own <b>Lead Routing</b>: create its new leads as leads or as opportunities, and give them a default salesperson and sales team. On a database with several companies, a <b>Company Override</b> sends one Page's leads to a different company from its account's. The salesperson must have Sales rights in the company the leads go to, and if a default stops fitting later, for example because the user was archived, the Page shows a warning that says what is wrong. When a submission matches an existing open lead, that lead only gets the salesperson and team if it has none.</p>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">4.</span>Read every lead in context</h3>
   <p style="margin:10px 0;">Leads come in as ordinary <code>crm.lead</code> records you can qualify and convert. A Meta Attribution section records the platform, campaign, ad set, ad, form and Page, the date and time the form was submitted when Meta provides it, and the originating Meta Lead ID. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys &mdash; platform, campaign, ad set, ad, form and submission day &mdash; ready for list, pivot and graph reporting.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/04-lead-attribution.jpg" alt="CRM lead with Meta attribution" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A lead with its Meta attribution, alongside the standard CRM fields.</figcaption>
   </figure>
 
-  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">4.</span>Map the questions you care about</h3>
-  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to a standard or custom CRM field &mdash; text, selection, checkbox, number, amount, date, or a link to existing records such as country or tags &mdash; and reuse the same field across all your forms. Or promote an answer into a new field from the lead itself. An answer that doesn't fit its field is kept on the lead rather than guessed.</p>
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">5.</span>Map the questions you care about</h3>
+  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to a standard or custom CRM field &mdash; text, selection, checkbox, number, amount, date, or a link to existing records such as country or tags &mdash; and reuse the same field across all your forms. Or promote an answer into a new field from the lead itself. An answer that doesn't fit its field is kept on the lead rather than guessed. Dates are read as ISO dates or in the date format set on the mapping (DD/MM/YYYY unless you change it). Workflow fields such as the salesperson, sales team, stage and expected revenue can't be mapped.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/05-field-mapping.jpg" alt="Mapping Meta form questions to CRM fields" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Field mappings link a form question to the CRM field it should fill.</figcaption>
   </figure>
 
-  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">5.</span>See what's converting</h3>
-  <p style="margin:10px 0;">A read-only dashboard shows leads over time, lead-to-opportunity and win rates (leads created directly as opportunities are shown as a separate count), a breakdown by campaign, and a ranking of your best performers, with separate health indicators for the webhook, the queue drain, the backfill and the token. Lead counts follow the date each form was submitted on Meta, and campaigns are grouped by their Meta ID, so two campaigns with the same name stay apart.</p>
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">6.</span>See what's converting</h3>
+  <p style="margin:10px 0;">A read-only dashboard shows leads over time, the share of leads converted from a lead to an opportunity, and the won rate across all opportunities (leads created directly as opportunities are shown as a separate count, as they skip the lead stage), a breakdown by campaign, and a ranking of your best performers. Lead counts follow the date each form was submitted on Meta, campaigns are grouped by their Meta ID, so two campaigns with the same name stay apart, and the figures cover the companies selected in the company switcher. System Health shows the webhook, the queue drain, the backfill and the token separately, each with a plain-language status such as <i>Running</i>, <i>Quiet</i> or <i>Falling behind</i>.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/01-dashboard.jpg" alt="Leads analytics dashboard" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The analytics dashboard &mdash; volume, conversion and campaign performance.</figcaption>
   </figure>
 
-  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">6.</span>Keep an audit trail</h3>
-  <p style="margin:10px 0;">Each ingestion attempt (webhook, backfill or manual) is logged with its status, trigger and the dedup key that matched. When a lead fails, fix the cause if there is one, then select the row and press Retry; the same ingestion service processes it again.</p>
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">7.</span>Keep an audit trail, and recover what fails</h3>
+  <p style="margin:10px 0;">Each ingestion attempt (webhook, backfill or manual) is logged with its status, trigger, Page and the dedup key that matched. When a lead fails, fix the cause if there is one, then press Retry on its row, or select several rows and use Retry Selected; the same ingestion service processes them again. The webhook queue (<b>CRM &rarr; Configuration &rarr; Webhook Events</b>) has the same Retry. When Meta rate-limits lead reads, waiting leads resume once Meta's wait is over, and a Meta Admin can resume them sooner. A lead you delete or merge in Odoo is skipped by the syncs, and a deleted one can be restored from <b>CRM &rarr; Configuration &rarr; Removed Meta Leads</b>.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/06-sync-logs.jpg" alt="Sync logs audit trail" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Sync logs record each ingestion attempt, and a failed lead can be retried from its row.</figcaption>
   </figure>
+
+  <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">8.</span>Protect personal data</h3>
+  <p style="margin:10px 0;">Meta form answers follow the lead's access rules, so a salesperson who can't open a lead can't read its answers either, and answers are shown as text, not HTML. A Meta Admin can press <b>Erase Personal Data</b> on a Meta lead, or on up to 200 selected in the Leads or Pipeline list, to remove the contact details, mapped answers, the Meta answer block and the stored Meta payloads; the stage, salesperson, revenue and campaign attribution stay. Under <b>Data retention</b>, you choose how long processed sync and webhook rows are kept (14 days by default), and how long failed webhook rows and the stored Meta data of failed sync rows are kept (90 days by default).</p>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Details</h2>
   <div style="display:flex;flex-wrap:wrap;gap:34px;">
     <div style="flex:1 1 300px;min-width:0;">
       <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">Stored on each Meta lead</h3>
       <ul style="margin:10px 0;padding-left:20px;">
-        <li style="padding:3px 0;">Contact name, email and phone (with normalized-phone dedup)</li>
+        <li style="padding:3px 0;">Contact name, email and phone</li>
         <li style="padding:3px 0;">Platform &mdash; Facebook or Instagram</li>
         <li style="padding:3px 0;">Campaign, ad set and ad names and IDs, when Meta provides them</li>
         <li style="padding:3px 0;">The date and time the form was submitted, when Meta provides it</li>
         <li style="padding:3px 0;">Lead form and Page &mdash; names, IDs and linked records</li>
         <li style="padding:3px 0;">Meta Lead ID and the originating account</li>
         <li style="padding:3px 0;">All custom form answers, stored in full</li>
+        <li style="padding:3px 0;">The company, salesperson, sales team and lead or opportunity type its Page routes it to</li>
       </ul>
     </div>
     <div style="flex:1 1 300px;min-width:0;">
       <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">Built-in safeguards</h3>
       <ul style="margin:10px 0;padding-left:20px;">
         <li style="padding:3px 0;">One CRM lead per Meta lead ID, enforced by a database UNIQUE constraint</li>
-        <li style="padding:3px 0;">Two-layer dedup: Meta Lead ID, then email and phone &mdash; a merged lead keeps its own data and gains the Meta attribution</li>
+        <li style="padding:3px 0;">Two-layer dedup: Meta Lead ID, then exact email and country-aware phone among open leads of the same company. A matched lead keeps its own data and gains the Meta attribution</li>
         <li style="padding:3px 0;">Typed field mapping that doesn't guess: an answer that doesn't fit is kept on the lead</li>
-        <li style="padding:3px 0;">HMAC-SHA256 verification on the raw webhook body</li>
-        <li style="padding:3px 0;">Tokens and App Secret restricted to administrators</li>
+        <li style="padding:3px 0;">Workflow fields such as the salesperson, team, stage and revenue can't be filled from a form answer</li>
+        <li style="padding:3px 0;">HMAC-SHA256 verification on the raw webhook body, and webhook requests over 64 KiB refused</li>
+        <li style="padding:3px 0;">Tokens and App Secret restricted to administrators, and masked in the Meta error text the module stores</li>
+        <li style="padding:3px 0;">Rate limits respected: the queue waits as long as Meta asks, up to a day</li>
         <li style="padding:3px 0;">Get-or-create UTM mapping &mdash; no duplicate UTM records</li>
         <li style="padding:3px 0;">Token-health alerts and separate checks for the webhook, queue drain and backfill</li>
+      </ul>
+    </div>
+    <div style="flex:1 1 300px;min-width:0;">
+      <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">Privacy and data protection</h3>
+      <ul style="margin:10px 0;padding-left:20px;">
+        <li style="padding:3px 0;">Meta answers follow the access rules of their lead</li>
+        <li style="padding:3px 0;">Answers and names shown as text, not HTML, in the lead description and in alerts</li>
+        <li style="padding:3px 0;">New-lead alerts only to users who can open the lead</li>
+        <li style="padding:3px 0;">Erase Personal Data on Meta leads, up to 200 at a time, and on sync or webhook rows that didn't become a lead</li>
+        <li style="padding:3px 0;">Deleting a Meta lead also removes its stored Meta payloads</li>
+        <li style="padding:3px 0;">Retention periods for sync and webhook rows, from 1 to 3650 days</li>
       </ul>
     </div>
   </div>
@@ -127,13 +153,13 @@
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can form answers be mapped to standard and custom CRM fields?</summary>
     <div style="padding:0 16px 6px;">
       <p style="margin:0 0 12px;">Yes. Name, email, phone and company name are filled in automatically. Any other question can be mapped, per form, to a standard or custom lead field: text, selection, checkbox, number, amount, date, or a link to existing records such as a country (by name or ISO code) or tags. The same field can be filled from several forms, and any captured question can be turned into a new custom field from the lead.</p>
-      <p style="margin:0 0 12px;">An answer that doesn't fit its field, such as an unknown option, is kept on the lead as a Meta answer rather than guessed.</p>
+      <p style="margin:0 0 12px;">An answer that doesn't fit its field, such as an unknown option, is kept on the lead as a Meta answer rather than guessed. Workflow fields such as the salesperson, sales team, stage and expected revenue can't be mapped: the salesperson and team come from the Page's routing instead.</p>
     </div>
   </details>
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can every failed lead be fixed with Retry?</summary>
     <div style="padding:0 16px 6px;">
-      <p style="margin:0 0 12px;">Not always. Retry runs the lead through the same ingestion again, from the copy Odoo stored or, once that copy has expired, by fetching it from Meta. That clears temporary problems such as a timeout, a rate limit (the retry waits as long as Meta asks), or a token that has since been renewed. Other failures need a fix first, for example a missing permission or a Page the token can no longer read. A lead Meta no longer returns can't be fetched again once its stored copy has expired, and a lead whose personal data was erased can't be retried. The Sync Log shows the error on each row, so you can fix the cause and then retry.</p>
+      <p style="margin:0 0 12px;">Not always. Retry runs the lead through the same ingestion again, from the copy Odoo stored or, once that copy has expired, by fetching it from Meta. You can retry from a Sync Log row or from the webhook queue. That clears temporary problems such as a timeout, a rate limit (the retry waits as long as Meta asks), or a token that has since been renewed. Other failures need a fix first, for example a missing permission or a Page the token can no longer read. A lead whose Page is archived in Odoo is held until you reactivate the Page, and is then fetched again on its own. A lead Meta no longer returns can't be fetched again once its stored copy has expired, and a lead whose personal data was erased can't be retried. The Sync Log shows the error on each row, so you can fix the cause and then retry.</p>
     </div>
   </details>
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
@@ -146,6 +172,25 @@
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can one database use more than one Meta app?</summary>
     <div style="padding:0 16px 6px;">
       <p style="margin:0 0 12px;">No. A database connects to one Meta app, because Odoo checks each webhook call with that app's App Secret. You can connect several Pages and lead forms through it. A different App ID is refused while accounts of the current app are active.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Does it work with several companies?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Yes. Each Meta account belongs to a company and its leads are created there, unless a Page has a Company Override that sends them to another company. Duplicate checks look only at leads of that company or with no company, new-lead alerts go only to users who can open the lead, and the dashboard counts the companies selected in the company switcher. All accounts share the database's one Meta app.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Will someone who submits a form twice get a duplicate lead?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Usually not. Each Meta lead ID creates at most one CRM lead. A new submission is first matched against open leads (active and not won) of the same company: by email address, compared exactly apart from letter case and surrounding spaces, then by phone number, read in the lead's country or, when the form gives none, the company's country. So <code>+20 10 1234 5678</code> and <code>010 1234 5678</code> match for a company in Egypt. A match is updated instead of a new lead being created, and the Sync Log records which key matched. A lead in a won stage, or one in another company, isn't matched, so a new lead is created.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can I erase a person's data for a privacy request, and how long is Meta data kept?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Yes, a Meta Admin can erase it. <b>Erase Personal Data</b> on a Meta lead, or on up to 200 leads selected in the Leads or Pipeline list, removes the contact details, mapped answers, the Meta answer block and the stored Meta payloads, also for Meta leads merged into it. The stage, salesperson, revenue and campaign attribution stay, and the linked contact and hand-written messages are not changed, so handle those separately. An erased lead can't be retried. Sync and webhook rows that didn't become a lead have the same button.</p>
+      <p style="margin:0 0 12px;">Under <b>Settings &rarr; Meta Lead Ads &rarr; Data retention</b>, successful sync rows and processed webhook rows are removed after 14 days by default, and failed webhook rows and the stored Meta data of failed sync rows after 90 days; each period can be set from 1 to 3650 days. Retention covers the module's logs and queue only: leads stay in CRM until you erase or delete them.</p>
     </div>
   </details>
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
@@ -177,7 +222,7 @@
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">What support is included?</summary>
     <div style="padding:0 16px 6px;">
-      <p style="margin:0 0 12px;">Your purchase includes email support at <a href="mailto:info@coresysbuilders.com" style="color:#1f4e79;">info@coresysbuilders.com</a> for installation questions and bug fixes, and a step-by-step setup guide built into the module (<b>Settings &rarr; Meta Lead Ads &rarr; Setup guide</b>) covering the Meta app, permissions, App Review, the webhook and Page subscription.</p>
+      <p style="margin:0 0 12px;">Your purchase includes email support at <a href="mailto:info@coresysbuilders.com" style="color:#1f4e79;">info@coresysbuilders.com</a> for installation questions and bug fixes, and a step-by-step setup guide built into the module (<b>Settings &rarr; Meta Lead Ads &rarr; Setup guide</b>) covering the Meta app, permissions, App Review, the webhook and Page subscription, and then companies, Page routing, the health indicators, recovering failed leads and data retention.</p>
       <p style="margin:0 0 12px;">Hands-on help configuring your Meta Business account and webhook, or deploying to production, is available as a paid service. Meta's own review steps (App Review and Business Verification) are completed in your Meta account, and their timing is set by Meta.</p>
     </div>
   </details>
