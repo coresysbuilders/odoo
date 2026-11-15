@@ -31,9 +31,12 @@ class IngestFixtureMixin:
             'app_id': 'app_test', 'app_secret': 'secret_test',
             'access_token': 'tok_acct',
         })
+        # The default type follows the creating user's Leads setting, so the
+        # shared Page says it creates leads.
         self.page = self.env['meta.page'].create({
             'name': 'Page', 'page_id': 'PG1',
             'access_token': 'tok_test', 'account_id': self.account.id,
+            'lead_type': 'lead',
         })
         self.form = self.env['meta.lead.form'].create({
             'name': 'Contact Us', 'form_id': 'F1', 'page_id': self.page.id,

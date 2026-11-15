@@ -8,6 +8,8 @@
 
 The parameter is seeded with noupdate="1", so changing the XML value does not
 reach databases that are only upgraded. Values an admin changed are kept.
+
+It reads and writes a single parameter, so it needs no batching.
 """
 import logging
 

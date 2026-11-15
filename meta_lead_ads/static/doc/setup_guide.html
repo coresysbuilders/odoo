@@ -9,6 +9,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Meta Lead Ads Setup Guide</title>
+<link rel="icon" type="image/png" href="/meta_lead_ads/static/description/icon.png">
 <style>
   body { margin: 0; background: #ffffff; color: #23282e;
          font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -164,14 +165,14 @@ level.</p>
 <b>developers.facebook.com</b> (the App dashboard), not
 <b>business.facebook.com</b> (Business Suite), and that the app is a
 <b>Business</b>-type app.</div>
-<p>Once both parts are in place, new lead submissions arrive in <b>CRM &rarr;
-Leads</b> within a minute or two, and the backfill job picks up anything the
-webhook misses.</p>
+<p>Once both parts are in place, new lead submissions usually reach <b>CRM
+&rarr; Leads</b> within a few minutes, and the backfill job picks up leads the
+webhook missed, as long as Meta still holds them.</p>
 
 <h2>Finding the webhook URL and verify token later</h2>
-<p>The wizard's final screen disappears once you close it, but the values are
-not lost: the verify token is stored permanently and the callback URL is
-fixed.</p>
+<p>The wizard's final screen disappears once you close it, but you can look
+both values up again: the verify token is stored in Odoo and the callback URL
+is fixed.</p>
 <ol>
   <li>Turn on developer mode: <b>Settings &rarr; General Settings</b>, scroll to
       the bottom, <b>Activate the developer mode</b>.</li>
@@ -179,7 +180,8 @@ fixed.</p>
       Parameters</b>.</li>
   <li><b>Verify Token</b>: search for
       <code>meta_lead_ads.webhook_verify_token</code>; its <b>Value</b> is your
-      verify token. It is generated once and never changes.</li>
+      verify token. It is generated once and stays the same while the module
+      is installed.</li>
   <li><b>Callback URL</b>: always <code>&lt;web.base.url&gt;/meta_lead_ads/webhook</code>.
       Look up the key <code>web.base.url</code> in the same list and append
       <code>/meta_lead_ads/webhook</code>.</li>
@@ -188,6 +190,49 @@ fixed.</p>
 Meta</b> and run it through to <b>Finish</b> again. It reuses the same verify
 token and shows both values again, so a webhook you already configured in Meta
 stays valid.</p>
+
+<h2 id="one-app">One Meta app per database</h2>
+<p>Odoo checks the signature of every webhook call from Meta with one App
+Secret, so a database can be connected to one Meta app only. Older versions of
+this module let you connect accounts of more than one app. If your database
+still has active accounts of two or more apps, the Meta account form and the
+Meta Lead Ads settings show a warning with the number of apps, and Odoo refuses
+to reconnect or unarchive an account until only one app is left.</p>
+<ol>
+  <li><b>See which accounts belong to which app.</b> Select every company that
+      has Meta accounts in the company switcher, then open <b>Meta Leads &gt;
+      Settings &gt; Open Accounts</b>. In the search bar, open <b>Group By &gt;
+      Add Custom Group</b> and choose <b>App ID</b>.</li>
+  <li><b>Pick the app to keep.</b> This is usually the app whose webhook is set
+      up in Meta and that most of your Pages use.</li>
+  <li><b>Archive every account of the other apps.</b> Open each one and click
+      <b>Actions &gt; Archive</b> (the gear icon). Their Pages, lead forms and
+      field mappings are kept.</li>
+  <li>Once the active accounts all use one app, the warning disappears.</li>
+</ol>
+<p>To bring back an archived account of an old app, connect it again under the
+current app: run <b>Connect to Meta</b> with a token of the same owner (the
+same System User), generated for the current app. The wizard reactivates the
+account with the current App ID and keeps its Pages and lead forms. A plain
+<b>Unarchive</b> is refused, because the account still holds the old App
+ID.</p>
+
+<h2 id="uninstall">Uninstalling</h2>
+<p>Uninstalling removes promoted fields and their values; export them first.
+The fields affected are the ones the module created when you promoted an
+answer, plus any custom field whose technical name starts with
+<code>x_meta_</code> and that a Meta field mapping fills.</p>
+<p>The Meta details on each lead (campaign, ad set, ad and form IDs and names,
+submission time, stored Meta answers) and the module's sync logs and settings
+are removed too, and the Instagram source and Paid Social medium it added are
+deleted, which leaves leads that used them with an empty Source and Medium.
+Leads themselves stay in CRM. Other custom fields are kept, except a custom
+field that is computed from, related to, or the one2many inverse of a promoted
+field: Odoo removes that field and its values together with the promoted
+field, so export it too. A promoted field that another module, such as
+Studio, also owns is kept. If you customized a view to show a promoted field,
+check that view afterwards: Odoo removes the field but can leave the view
+pointing at it, so edit the view to take the field out.</p>
 
 <h2>Troubleshooting</h2>
 <ul>
@@ -199,16 +244,26 @@ stays valid.</p>
   <li><b>Status stays "Development mode, test leads only."</b> The token is
       valid but <code>leads_retrieval</code> doesn't have Advanced Access yet;
       complete App Review and Business Verification.</li>
-  <li><b>No leads arriving.</b> First check the <b>Scheduler</b> status on the
-      Meta account form (Settings &rarr; Meta Lead Ads &rarr; <b>Open
-      Accounts</b>, open an account, or click <b>Check Scheduler</b>). Leads only
-      sync if Odoo's scheduler runs the jobs; if it shows <i>Not running</i>,
-      the server needs <code>db_name</code> set (a <code>dbfilter</code> alone is
-      not enough), <code>max_cron_threads</code> above 0 and no
-      <code>--no-cron</code>, then a restart. If the scheduler is healthy,
-      confirm the Page is subscribed to <code>leadgen</code> (wizard
-      <b>Subscribe</b> button) and that the Webhook URL is reachable from the
-      internet over HTTPS.</li>
+  <li><b>No leads arriving.</b> First open the <b>Meta Leads</b> dashboard and
+      look at <b>System Health</b>. <b>Webhook</b> shows whether webhook leads
+      are being processed. <i>Quiet</i> means Odoo hasn't processed a webhook
+      lead in the last 24 hours. That is normal on a low-traffic form, but
+      rejected calls from Meta (for example after an App Secret change) and a
+      turned-off subscription look the same, so check the Webhooks page of your
+      Meta app if you expect leads. <i>Receiving, but failing</i> means they
+      arrive and fail (open the Sync Log for the error). <b>Queue drain</b> and
+      <b>Backfill</b> show each scheduled job on its own. If either says <i>Not
+      running</i>, check the <b>Scheduler</b> status on the Meta account form
+      (or click <b>Check Scheduler</b>); it names the job that stopped. If both
+      stopped, the server's Odoo needs <code>db_name</code> set (a
+      <code>dbfilter</code> alone is not enough), <code>max_cron_threads</code>
+      above 0, and no <code>--no-cron</code>, then a restart. If they're
+      running, confirm the Page is subscribed to the <code>leadgen</code> field
+      (wizard <b>Subscribe</b> button) and that the Webhook URL is reachable
+      from the internet over HTTPS.</li>
+  <li><b>Leads of an archived Page.</b> Leads for a Page you archived in Odoo
+      wait in the Sync Log as failed until you reactivate the Page; they are
+      then fetched again on their own.</li>
 </ul>
 
 <footer><b>CoreSys Builders.</b> Questions: info@coresysbuilders.com</footer>

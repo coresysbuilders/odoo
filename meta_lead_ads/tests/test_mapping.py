@@ -7,9 +7,11 @@
 from odoo.tests.common import TransactionCase, tagged
 from odoo.exceptions import ValidationError
 
+from .common_typed_targets import TypedTargetsMixin
+
 
 @tagged('post_install', '-at_install')
-class TestMapping(TransactionCase):
+class TestMapping(TypedTargetsMixin, TransactionCase):
     def _form(self):
         acc = self.env['meta.account'].create({'name': 'A', 'account_id': 'A'})
         page = self.env['meta.page'].create({'name': 'P', 'page_id': 'P', 'account_id': acc.id})
@@ -30,15 +32,24 @@ class TestMapping(TransactionCase):
         """Typed crm.lead fields (monetary, relational, date, selection) are valid targets."""
         form = self._form()
         Field = self.env['ir.model.fields']
-        for key, fname in (('budget', 'expected_revenue'),
+        for key, fname in (('budget', 'x_meta_typed_money'),
                            ('country', 'country_id'),
                            ('interests', 'tag_ids'),
-                           ('deadline', 'date_deadline'),
-                           ('priority', 'priority')):
+                           ('deadline', 'x_meta_typed_date'),
+                           ('urgency', 'x_meta_typed_level')):
             m = self.env['meta.field.mapping'].create({
                 'form_id': form.id, 'meta_key': key,
                 'crm_field_id': Field._get('crm.lead', fname).id})
             self.assertEqual(m.crm_field_type, Field._get('crm.lead', fname).ttype)
+
+    def test_manual_typed_targets_offered(self):
+        """The custom typed fields the other tests map onto are real picker options."""
+        offered = {name for name, _label
+                   in self.env['meta.field.mapping']._offered_targets()}
+        for name, field in self.TYPED.items():
+            with self.subTest(field=name):
+                self.assertIn(name, offered)
+                self.assertEqual(field.ttype, self._TYPED_FIELDS[name][0])
 
     def test_mapping_rejects_system_and_readonly_targets(self):
         """System fields, company_id, our own meta_* columns and readonly fields are rejected."""

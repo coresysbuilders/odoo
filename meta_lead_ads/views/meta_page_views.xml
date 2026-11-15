@@ -9,11 +9,16 @@
         <field name="name">meta.page.list</field>
         <field name="model">meta.page</field>
         <field name="arch" type="xml">
-            <list>
+            <list decoration-warning="routing_issue">
                 <field name="name"/>
                 <field name="page_id"/>
                 <field name="account_id"/>
+                <field name="lead_company_id" groups="base.group_multi_company"/>
+                <field name="lead_type" optional="hide"/>
+                <field name="lead_user_id" optional="show"/>
+                <field name="lead_team_id" optional="show"/>
                 <field name="form_count"/>
+                <field name="routing_issue" column_invisible="1"/>
                 <field name="active" column_invisible="1"/>
             </list>
         </field>
@@ -24,6 +29,15 @@
         <field name="model">meta.page</field>
         <field name="arch" type="xml">
             <form>
+                <header>
+                    <!-- Meta Users can read Pages but not change them, so the
+                         button is hidden from them. The method checks too. -->
+                    <button name="action_resume_lead_reads" type="object"
+                            string="Resume Lead Reads" class="btn-secondary"
+                            invisible="not lead_fetch_paused_until"
+                            groups="meta_lead_ads.group_meta_admin"
+                            confirm="Meta asked to pause lead reads for this Page. Reading sooner can make Meta extend the block. Resume now?"/>
+                </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
                         <button type="object" name="action_open_forms"
@@ -35,7 +49,31 @@
                         <field name="name"/>
                         <field name="page_id"/>
                         <field name="account_id"/>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="lead_company_id" readonly="1"
+                               groups="base.group_multi_company"/>
+                        <!-- Without the multi-company group the field above is
+                             dropped, and the routing domains need it. -->
+                        <field name="lead_company_id" invisible="1"/>
+                        <field name="lead_fetch_paused_until" readonly="1"
+                               invisible="not lead_fetch_paused_until"/>
                         <field name="active"/>
+                    </group>
+                    <div class="alert alert-warning" role="alert"
+                         invisible="not routing_issue"
+                         groups="meta_lead_ads.group_meta_admin">
+                        <field name="routing_issue" nolabel="1" readonly="1"/>
+                    </div>
+                    <group string="Lead Routing" name="lead_routing"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <field name="lead_type" widget="radio"
+                               options="{'horizontal': true}"/>
+                        <!-- Domain is on the field: it needs the sales group id. -->
+                        <field name="lead_user_id"
+                               options="{'no_create': True}"/>
+                        <field name="lead_team_id"
+                               domain="['|', ('company_id', '=', False), ('company_id', '=', lead_company_id)]"
+                               options="{'no_create': True}"/>
                     </group>
                 </sheet>
             </form>

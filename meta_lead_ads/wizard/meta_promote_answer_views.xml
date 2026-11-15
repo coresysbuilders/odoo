@@ -10,14 +10,79 @@
         <field name="model">meta.promote.answer</field>
         <field name="arch" type="xml">
             <form string="Promote Meta Answer to Field">
-                <group>
+                <field name="state" invisible="1"/>
+                <field name="field_reusable" invisible="1"/>
+                <field name="field_on_form" invisible="1"/>
+                <field name="resume_hint" invisible="1"/>
+
+                <!-- Confirm step: the name is taken. Nothing is reused
+                     until the admin clicks Reuse Field. -->
+                <div class="alert alert-warning" role="alert"
+                     invisible="state != 'confirm' or not field_reusable">
+                    A field named <strong><field name="tech_name" readonly="1" class="oe_inline"/></strong>
+                    already exists on leads. You can reuse it for this
+                    question, or pick another name. If you reuse it, this
+                    question's answers will be written into the same field
+                    as the forms listed below.
+                    <div invisible="not collision_note">
+                        <field name="collision_note" nolabel="1" readonly="1"/>
+                    </div>
+                    <div invisible="not resume_hint">
+                        It may have been created by an earlier promotion
+                        that didn't finish.
+                    </div>
+                </div>
+                <div class="alert alert-warning" role="alert"
+                     invisible="state != 'confirm' or field_reusable">
+                    <span invisible="field_on_form">
+                        A field named <strong><field name="tech_name" readonly="1" class="oe_inline"/></strong>
+                        already exists on leads and can't be reused, because
+                        only custom text fields can hold promoted answers.
+                        Pick another name.
+                    </span>
+                    <span invisible="not field_on_form">
+                        A field named <strong><field name="tech_name" readonly="1" class="oe_inline"/></strong>
+                        already exists on leads and can't be reused here,
+                        because another question on this form already fills
+                        it. Pick another name.
+                    </span>
+                    <div invisible="not collision_note">
+                        <field name="collision_note" nolabel="1" readonly="1"/>
+                    </div>
+                </div>
+
+                <group invisible="state != 'name'">
                     <field name="field_label"/>
-                    <field name="tech_name" readonly="1"/>
-                    <field name="reuse_confirmed"/>
+                    <field name="tech_name"/>
+                    <field name="question_key" readonly="1"/>
                 </group>
+
+                <group invisible="state != 'confirm'">
+                    <field name="existing_field_label" readonly="1"/>
+                    <field name="tech_name" string="Technical Name" readonly="1"/>
+                </group>
+                <separator string="Already Used By"
+                           invisible="state != 'confirm' or not usage_summary"/>
+                <field name="usage_summary" nolabel="1" readonly="1"
+                       invisible="state != 'confirm' or not usage_summary"/>
+                <div class="alert alert-info" role="status"
+                     invisible="state != 'confirm' or usage_summary">
+                    No form maps to this field yet.
+                </div>
+
                 <footer>
                     <button name="action_promote" string="Promote"
-                            type="object" class="btn-primary"/>
+                            type="object" class="btn-primary"
+                            invisible="state != 'name'"/>
+                    <button name="action_confirm_reuse" string="Reuse Field"
+                            type="object" class="btn-primary"
+                            invisible="state != 'confirm' or not field_reusable"/>
+                    <button name="action_back_to_name" string="Pick Another Name"
+                            type="object" class="btn-secondary"
+                            invisible="state != 'confirm' or not field_reusable"/>
+                    <button name="action_back_to_name" string="Pick Another Name"
+                            type="object" class="btn-primary"
+                            invisible="state != 'confirm' or field_reusable"/>
                     <button string="Cancel" special="cancel"/>
                 </footer>
             </form>

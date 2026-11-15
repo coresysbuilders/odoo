@@ -20,6 +20,30 @@
       <field name="active" eval="True"/>
     </record>
 
+    <!-- Once a day, reads the last few days of every form again to catch
+         leads Meta made visible late. Never moves the backfill cursor. -->
+    <record id="cron_meta_reconcile" model="ir.cron">
+      <field name="name">Meta: Reconcile Recent Leads (wide sweep)</field>
+      <field name="model_id" ref="model_meta_lead_form"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_reconcile()</field>
+      <field name="interval_number">1</field>
+      <field name="interval_type">days</field>
+      <field name="active" eval="True"/>
+    </record>
+
+    <!-- Re-reads campaign, ad set, ad and form names Meta could not return
+         when the lead arrived; the lead itself is already stored. -->
+    <record id="cron_meta_attribution_retry" model="ir.cron">
+      <field name="name">Meta: Retry Attribution Names</field>
+      <field name="model_id" ref="model_meta_lead_ingest"/>
+      <field name="state">code</field>
+      <field name="code">model._cron_retry_attribution()</field>
+      <field name="interval_number">30</field>
+      <field name="interval_type">minutes</field>
+      <field name="active" eval="True"/>
+    </record>
+
     <!-- Daily check that each account's token still works. -->
     <record id="cron_meta_token_health" model="ir.cron">
       <field name="name">Meta: Token Health Check</field>
@@ -38,10 +62,12 @@
       <field name="value">30</field>
     </record>
 
-    <!-- Daily cleanup of meta.sync.log, which would otherwise keep growing
-         (every webhook retry and backfill overlap logs a skipped row). Only
-         success and skipped rows past the retention window are removed;
-         failed and pending rows are kept. -->
+    <!-- Daily cleanup, in four steps: removed-lead records past their fixed
+         retention; success and skipped sync rows past the sync log
+         retention; processed and failed webhook queue rows past their own
+         retention (waiting rows are kept); and the stored Meta data of
+         failed sync rows past the failed-rows retention (the rows stay, so
+         they can still be retried). -->
     <record id="cron_meta_sync_log_vacuum" model="ir.cron">
       <field name="name">Meta: Vacuum Sync Logs</field>
       <field name="model_id" ref="model_meta_sync_log"/>
@@ -52,12 +78,27 @@
       <field name="active" eval="True"/>
     </record>
 
-    <!-- Sync log retention in days; 0 turns the cleanup off. Databases still
-         on the old 90-day default are moved to 14 by the 18.0.11.0.0
-         migration. -->
+    <!-- Days to keep success and skipped sync rows. The minimum is 1: a
+         stored 0, a negative number or junk falls back to 14 with a warning
+         in the server log. Databases still on the old 90-day default are
+         moved to 14 by the 18.0.11.0.0 migration. -->
     <record id="meta_sync_log_retention_days" model="ir.config_parameter">
       <field name="key">meta_lead_ads.sync_log_retention_days</field>
       <field name="value">14</field>
+    </record>
+
+    <!-- Days to keep processed webhook queue rows (minimum 1, falls back to
+         14). -->
+    <record id="meta_queue_done_retention_days" model="ir.config_parameter">
+      <field name="key">meta_lead_ads.queue_done_retention_days</field>
+      <field name="value">14</field>
+    </record>
+
+    <!-- Days to keep failed webhook queue rows and the stored Meta data of
+         failed sync rows (minimum 1, falls back to 90). -->
+    <record id="meta_failed_retention_days" model="ir.config_parameter">
+      <field name="key">meta_lead_ads.failed_retention_days</field>
+      <field name="value">90</field>
     </record>
 
     <!-- Each backfill re-reads the last N seconds, because Meta can make a
@@ -66,6 +107,13 @@
     <record id="meta_backfill_overlap_seconds" model="ir.config_parameter">
       <field name="key">meta_lead_ads.backfill_overlap_seconds</field>
       <field name="value">60</field>
+    </record>
+
+    <!-- Days the daily wide sweep reads again, 1 to 90. Read by
+         meta.lead.form._reconcile_window_days(). -->
+    <record id="meta_reconcile_window_days" model="ir.config_parameter">
+      <field name="key">meta_lead_ads.reconcile_window_days</field>
+      <field name="value">7</field>
     </record>
   </data>
 </odoo>

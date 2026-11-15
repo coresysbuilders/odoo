@@ -19,6 +19,15 @@
         <field name="name">Field Mappings</field>
         <field name="res_model">meta.field.mapping</field>
         <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="meta_field_mapping_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No field mappings yet.</p>
+            <p>
+                Mappings tell Odoo which lead field each form question fills.
+                Open a lead form under Meta Lead Ads and add them on its Field
+                Mappings tab.
+            </p>
+        </field>
     </record>
 
     <!-- Odoo 19 dropped target 'inline'; like core, leave target unset. The

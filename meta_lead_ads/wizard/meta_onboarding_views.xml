@@ -16,37 +16,95 @@
                     <field name="app_secret" password="True"/>
                     <field name="access_token" password="True"/>
                     <field name="exchange_short_lived"/>
+                    <field name="company_id" groups="base.group_multi_company"/>
                 </group>
+                <field name="has_archived_pages" invisible="1"/>
+                <field name="has_other_account_pages" invisible="1"/>
                 <group invisible="state != 'pages'">
                     <field name="access_status" readonly="1"/>
+                    <div class="text-muted small mb-2" colspan="2"
+                         invisible="not has_archived_pages">
+                        Archived Pages start unticked. Tick one to bring it back with its routing and settings. You choose which of its archived lead forms return on the next step.
+                    </div>
+                    <div class="text-muted small mb-2" colspan="2"
+                         invisible="not has_other_account_pages">
+                        Pages marked "Another account" are already set up in Odoo under a different Meta account, so they can't be added here. Run Connect to Meta with that account's token to update them.
+                    </div>
+                    <div class="mb-2" colspan="2" invisible="page_line_ids">
+                        <p class="mb-1"><strong>No Pages found for this token.</strong></p>
+                        <p class="text-muted">Give the System User access to the Page in Meta Business Manager, then press Close and run Connect to Meta again.</p>
+                    </div>
                     <field name="page_line_ids">
-                        <list editable="bottom" create="false">
-                            <field name="selected" widget="boolean_toggle"/>
+                        <!-- archived must be in the list for the row
+                             decoration to evaluate. -->
+                        <list editable="bottom" create="false"
+                              decoration-muted="(archived or other_account) and not selected">
+                            <field name="selected" string="Include"
+                                   widget="boolean_toggle"
+                                   readonly="other_account"/>
                             <field name="name" readonly="1"/>
                             <field name="page_id" readonly="1"/>
+                            <field name="line_status" widget="badge"
+                                   decoration-warning="line_status == 'archived'"
+                                   decoration-info="line_status == 'other_account'"/>
+                            <field name="archived" column_invisible="1"/>
+                            <field name="other_account" column_invisible="1"/>
                         </list>
                     </field>
                 </group>
                 <group invisible="state != 'forms'">
+                    <div class="text-muted small mb-2" colspan="2">
+                        Forms already in Odoo stay connected. Tick an archived form to bring it back with its field mappings and sync position. Forms Meta no longer lists are archived.
+                    </div>
+                    <div class="mb-2" colspan="2" invisible="form_line_ids">
+                        <p class="text-muted">The selected Pages have no lead forms on Meta yet. You can still press Finish; new forms show up the next time you run the wizard.</p>
+                    </div>
                     <field name="form_line_ids">
-                        <list create="false" edit="false">
-                            <field name="page_id"/>
-                            <field name="name"/>
-                            <field name="form_id"/>
+                        <!-- Unticking an active form does nothing at Finish,
+                             so only archived rows can be toggled. -->
+                        <list editable="bottom" create="false" delete="false"
+                              decoration-muted="archived and not selected">
+                            <field name="selected" string="Include"
+                                   widget="boolean_toggle"
+                                   readonly="not archived"/>
+                            <field name="page_id" readonly="1"/>
+                            <field name="name" readonly="1"/>
+                            <field name="form_id" readonly="1"/>
+                            <field name="line_status" widget="badge"
+                                   decoration-warning="line_status == 'archived'"/>
+                            <field name="archived" column_invisible="1"/>
                         </list>
                     </field>
                 </group>
-                <div class="alert alert-success" role="alert"
+                <field name="is_update" invisible="1"/>
+                <!-- The summary is plain text, so it is escaped like any
+                     other field value. -->
+                <div class="alert alert-success" role="status"
                      invisible="state != 'done'">
-                    Connection saved. Pages and lead forms have been imported.
+                    <span invisible="is_update">
+                        <strong>Connection saved.</strong> Pages and lead forms have been imported.
+                    </span>
+                    <span invisible="not is_update">
+                        <strong>Existing connection updated.</strong>
+                    </span>
+                    <field name="onboarding_summary" nolabel="1" readonly="1"
+                           class="mt8" invisible="not onboarding_summary"/>
                 </div>
                 <!-- Webhook subscription per page, plus the URL and verify
                      token to paste into Meta. Only Meta admins can open this
                      wizard, so only they see the token. -->
-                <group invisible="state != 'done'">
+                <group invisible="state != 'done'" class="mt16">
                     <group string="Webhook Subscription">
                         <field name="page_id"/>
-                        <field name="subscription_state" widget="badge"/>
+                        <field name="subscription_state" widget="badge"
+                               decoration-success="subscription_state == 'subscribed'"
+                               decoration-warning="subscription_state in ('not_subscribed', 'other_app')"
+                               decoration-muted="subscription_state == 'check_failed'"/>
+                        <div class="text-muted small mt8" colspan="2"
+                             invisible="not subscription_hint">
+                            <field name="subscription_hint" nolabel="1"
+                                   readonly="1"/>
+                        </div>
                     </group>
                     <group string="Paste into Meta App → Webhooks → Page → leadgen">
                         <field name="webhook_url" readonly="1"/>
@@ -68,7 +126,12 @@
                             invisible="state != 'done' or subscription_state == 'subscribed'"/>
                     <button name="action_unsubscribe_page" string="Unsubscribe"
                             type="object" class="btn-secondary"
+                            confirm="Unsubscribe this Page? Meta stops sending its new leads to Odoo in real time until you subscribe again."
                             invisible="state != 'done' or subscription_state != 'subscribed'"/>
+                    <button name="action_refresh_subscription"
+                            string="Refresh status" type="object"
+                            class="btn-secondary"
+                            invisible="state != 'done'"/>
                     <button string="Close" special="cancel"/>
                 </footer>
             </form>

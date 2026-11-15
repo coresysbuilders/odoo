@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!--
+        Settings screen with only the Meta Lead Ads section, for Meta admins
+        without Settings rights (Meta Leads > Settings). It stands on its own:
+        inheriting the base settings form would bring every other app's
+        section with it. Priority 100 keeps it from becoming the default
+        settings form.
+
+        The blocks are the same as in res_config_settings_views.xml, in the
+        same order. Change both together; a test compares them.
+    -->
+    <record id="res_config_settings_view_form_meta_only" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.meta.lead.ads.only</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <form string="Settings" class="oe_form_configuration" js_class="base_settings">
+                <app string="Meta Lead Ads" name="meta_lead_ads"
+                     logo="/meta_lead_ads/static/description/icon.png"
+                     groups="meta_lead_ads.group_meta_admin">
+
+                    <block title="Connection" name="meta_connection_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Connect to Meta"
+                                 help="Launch the onboarding wizard to connect a Meta App, select pages and import lead forms.">
+                            <button name="%(meta_onboarding_action)d" type="action"
+                                    string="Connect to Meta" class="btn-primary"/>
+                        </setting>
+                        <setting string="Setup guide"
+                                 help="Step-by-step instructions for the Meta app, token, permissions, App Review and webhook.">
+                            <a href="/meta_lead_ads/static/doc/setup_guide.html" target="_blank" role="button"
+                               class="btn btn-link px-0">
+                                <i class="fa fa-book me-1"/>Open setup guide
+                            </a>
+                        </setting>
+                        <setting string="Connection status"
+                                 help="Best-of status across active Meta accounts. Token-free — never shows the App Secret or access token.">
+                            <field name="meta_connection_status" widget="badge" readonly="1"
+                                   decoration-success="meta_connection_status == 'lead_retrieval_granted'"
+                                   decoration-warning="meta_connection_status == 'dev_test_only'"
+                                   decoration-danger="meta_connection_status == 'auth_failed'"/>
+                        </setting>
+                        <setting string="Meta apps"
+                                 help="Only one Meta app per database is supported."
+                                 invisible="not meta_app_conflict_message">
+                            <field name="meta_app_conflict_message" readonly="1" class="text-warning"/>
+                        </setting>
+                        <setting string="Lead reads paused"
+                                 help="Meta asked this app to slow down, so the webhook queue waits for every Page until then. Reading sooner can make Meta extend the block."
+                                 invisible="not meta_lead_fetch_paused_until">
+                            <field name="meta_lead_fetch_paused_until" readonly="1"/>
+                            <button name="action_resume_app_lead_reads" type="object"
+                                    string="Resume lead reads" class="btn-secondary"
+                                    confirm="Resume lead reads for every Page now?"/>
+                        </setting>
+                    </block>
+
+                    <block title="Configuration" name="meta_config_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Accounts"
+                                 help="Open the Meta accounts list (tokens, pages, status).">
+                            <button name="%(meta_account_action)d" type="action"
+                                    string="Open Accounts" class="btn-link"/>
+                        </setting>
+                        <setting string="Sync Logs"
+                                 help="Open the ingestion / sync log list.">
+                            <button name="%(meta_sync_log_action)d" type="action"
+                                    string="Open Sync Logs" class="btn-link"/>
+                        </setting>
+                        <setting string="Field Mappings"
+                                 help="Open the field-mapping list — a global entry point to the per-form mapping rows.">
+                            <button name="%(meta_field_mapping_action)d" type="action"
+                                    string="Open Field Mappings" class="btn-link"/>
+                        </setting>
+                    </block>
+
+                    <block title="Lead naming" name="meta_naming_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Lead title template"
+                                 help="Valid tokens: {form_name} {campaign_name} {adset_name} {ad_name} {contact_name} {page_name} {date}. Unknown or malformed tokens block Save.">
+                            <field name="lead_name_template"/>
+                            <div class="text-muted mt8">
+                                Preview:
+                                <field name="lead_name_preview" readonly="1" nolabel="1"/>
+                            </div>
+                        </setting>
+                        <setting string="Re-apply to existing leads"
+                                 help="Re-title existing Meta leads still using a generated title. With a {date} template, only leads that have a stored Meta submission date are re-titled.">
+                            <button name="action_retro_rename_meta_leads" type="object"
+                                    string="Re-apply to existing Meta leads" class="btn-secondary"/>
+                        </setting>
+                    </block>
+
+                    <block title="Notifications" name="meta_notify_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Notify on new lead"
+                                 help="When a new lead arrives from Meta, notify either a specific user or every active member of a role in their Discuss inbox.">
+                            <field name="meta_notify_enabled"/>
+                            <div class="content-group mt16" invisible="not meta_notify_enabled">
+                                <field name="meta_notify_target_type" widget="radio"/>
+                                <field name="meta_notify_user_id"
+                                       invisible="meta_notify_target_type != 'user'"
+                                       required="meta_notify_enabled and meta_notify_target_type == 'user'"
+                                       options="{'no_create': True}"/>
+                                <field name="meta_notify_group_id"
+                                       invisible="meta_notify_target_type != 'group'"
+                                       required="meta_notify_enabled and meta_notify_target_type == 'group'"
+                                       options="{'no_create': True}"/>
+                            </div>
+                        </setting>
+                    </block>
+
+                    <block title="Data retention" name="meta_retention_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Sync log retention"
+                                 help="Days to keep successful and skipped sync rows. Failed rows are kept as traces. From 1 to 3650 days.">
+                            <field name="meta_sync_log_retention_days"/>
+                            <div class="text-muted mt8">
+                                Rows can no longer be kept forever: every value is from 1 day to 3650 days (ten years).
+                            </div>
+                        </setting>
+                        <setting string="Processed webhook rows"
+                                 help="Days to keep webhook rows that were processed. Waiting rows are never removed. From 1 to 3650 days.">
+                            <field name="meta_queue_done_retention_days"/>
+                        </setting>
+                        <setting string="Failed rows"
+                                 help="Days to keep failed webhook rows, and the stored Meta data of failed sync rows. Meta serves a lead for about 90 days. From 1 to 3650 days.">
+                            <field name="meta_failed_retention_days"/>
+                        </setting>
+                    </block>
+
+                </app>
+            </form>
+        </field>
+    </record>
+
+    <!-- Kept in this file: meta_settings_menu.xml loads before this view
+         exists. Like core on Odoo 19, target is left unset. -->
+    <record id="meta_settings_only_action" model="ir.actions.act_window">
+        <field name="name">Settings</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="res_config_settings_view_form_meta_only"/>
+        <field name="context">{'module': 'meta_lead_ads'}</field>
+    </record>
+</odoo>

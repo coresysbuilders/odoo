@@ -20,7 +20,11 @@ import json
 import logging
 from datetime import datetime, timezone
 
+from odoo.tools import SQL
+
 from odoo.addons.meta_lead_ads.models.meta_lead_ingest import parse_meta_time
+from odoo.addons.meta_lead_ads.models.migration_utils import (
+    iter_child_batches, iter_id_batches)
 
 _logger = logging.getLogger(__name__)
 
@@ -54,43 +58,58 @@ def _loads(text):
 def migrate(cr, version):
     if not version:
         return
-    cr.execute("""
-        SELECT id, meta_leadgen_id FROM crm_lead
-         WHERE meta_leadgen_id IS NOT NULL AND meta_submitted_at IS NULL
-    """)
-    pending = dict(cr.fetchall())
-    if not pending:
+    visited = filled = 0
+    # Keyset paging ends even though leads with no payload keep matching.
+    for ids in iter_id_batches(cr, 'crm_lead', SQL(
+            "meta_leadgen_id IS NOT NULL AND meta_submitted_at IS NULL")):
+        cr.execute("SELECT id, meta_leadgen_id FROM crm_lead "
+                   "WHERE id = ANY(%s)", (ids,))
+        pending = dict(cr.fetchall())
+        visited += len(pending)
+        found = {}
+
+        # A lead can have many success rows, so the payloads are paged too,
+        # by (lead, id) so the lead_id indexes that the schema update creates
+        # before post-migrate scripts run can be used. Each lead's rows come
+        # in ascending id order, so its first usable payload by id still wins.
+        for log_ids in iter_child_batches(
+                cr, 'meta_sync_log', 'lead_id', list(pending), SQL(
+                    "status = 'success' AND raw_payload IS NOT NULL")):
+            cr.execute("""
+                SELECT lead_id, raw_payload FROM meta_sync_log
+                 WHERE id = ANY(%s)
+                 ORDER BY lead_id, id
+            """, (log_ids,))
+            for lead_id, text in cr.fetchall():
+                data = _loads(text)
+                moment = parse_meta_time((data or {}).get('created_time'))
+                if moment and lead_id not in found:
+                    found[lead_id] = moment
+
+        missing = [lid for lid in pending if lid not in found]
+        if missing:
+            for event_ids in iter_child_batches(
+                    cr, 'meta_webhook_event', 'lead_id', missing,
+                    SQL("raw_payload IS NOT NULL")):
+                cr.execute("""
+                    SELECT lead_id, raw_payload FROM meta_webhook_event
+                     WHERE id = ANY(%s)
+                     ORDER BY lead_id, id
+                """, (event_ids,))
+                for lead_id, text in cr.fetchall():
+                    moment = _from_envelope(_loads(text), pending[lead_id])
+                    if moment and lead_id not in found:
+                        found[lead_id] = moment
+
+        for lead_id, moment in found.items():
+            cr.execute("""
+                UPDATE crm_lead SET meta_submitted_at = %s
+                 WHERE id = %s AND meta_submitted_at IS NULL
+            """, (moment, lead_id))
+            filled += cr.rowcount
+    if not visited:
         return
-    found = {}
-
-    cr.execute("""
-        SELECT lead_id, raw_payload FROM meta_sync_log
-         WHERE lead_id = ANY(%s) AND status = 'success'
-           AND raw_payload IS NOT NULL
-         ORDER BY id
-    """, (list(pending),))
-    for lead_id, text in cr.fetchall():
-        data = _loads(text)
-        moment = parse_meta_time((data or {}).get('created_time'))
-        if moment and lead_id not in found:
-            found[lead_id] = moment
-
-    missing = [lid for lid in pending if lid not in found]
-    if missing:
-        cr.execute("""
-            SELECT lead_id, raw_payload FROM meta_webhook_event
-             WHERE lead_id = ANY(%s) AND raw_payload IS NOT NULL
-             ORDER BY id
-        """, (missing,))
-        for lead_id, text in cr.fetchall():
-            moment = _from_envelope(_loads(text), pending[lead_id])
-            if moment and lead_id not in found:
-                found[lead_id] = moment
-
-    for lead_id, moment in found.items():
-        cr.execute("UPDATE crm_lead SET meta_submitted_at = %s WHERE id = %s",
-                   (moment, lead_id))
     _logger.info(
         "meta_lead_ads: Meta submission time filled for %s of %s existing "
         "Meta lead(s); the rest have no stored payload and stay empty.",
-        len(found), len(pending))
+        filled, visited)

@@ -16,11 +16,13 @@ from datetime import date, datetime
 
 from odoo.tests.common import TransactionCase, tagged
 
+from .common_typed_targets import TypedTargetsMixin
 from .test_ingest import IngestFixtureMixin
 
 
 @tagged('post_install', '-at_install')
-class TestLeadDataGaps(IngestFixtureMixin, TransactionCase):
+class TestLeadDataGaps(TypedTargetsMixin, IngestFixtureMixin,
+                       TransactionCase):
 
     def _map(self, key, field_name, form=None):
         return self.env['meta.field.mapping'].create({
@@ -81,13 +83,16 @@ class TestLeadDataGaps(IngestFixtureMixin, TransactionCase):
         Tag = self.env['crm.tag']
         vip = Tag.create({'name': 'VIP test tag'})
         hot = Tag.create({'name': 'Hot test tag'})
-        priority_field = self.Lead._fields['priority']
-        key, label = priority_field._description_selection(self.env)[-1]
-        self._map('budget', 'expected_revenue')
+        level_field = self.Lead._fields['x_meta_typed_level']
+        key, label = level_field._description_selection(self.env)[-1]
+        self.assertEqual((key, label), ('high', 'High'))
+        self._map('budget', 'x_meta_typed_money')
         self._map('country', 'country_id')
         self._map('interests', 'tag_ids')
-        self._map('urgency', 'priority')
-        self._map('deadline', 'date_deadline')
+        self._map('urgency', 'x_meta_typed_level')
+        self._map('deadline', 'x_meta_typed_date')
+        self._map('seats', 'x_meta_typed_count')
+        self._map('newsletter', 'x_meta_typed_flag')
         payload = self._fake_lead(field_data=[
             {'name': 'email', 'values': ['typed@example.com']},
             {'name': 'budget', 'values': ['$5,000']},
@@ -95,14 +100,18 @@ class TestLeadDataGaps(IngestFixtureMixin, TransactionCase):
             {'name': 'interests', 'values': ['VIP test tag', 'hot TEST tag']},
             {'name': 'urgency', 'values': [label]},
             {'name': 'deadline', 'values': ['2026-07-01']},
+            {'name': 'seats', 'values': ['12']},
+            {'name': 'newsletter', 'values': ['Yes']},
         ])
         with self._patch_graph(fetch_lead=payload):
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
-        self.assertEqual(lead.expected_revenue, 5000.0)
+        self.assertEqual(lead.x_meta_typed_money, 5000.0)
         self.assertEqual(lead.country_id, self.env.ref('base.eg'))
         self.assertEqual(lead.tag_ids, vip | hot)
-        self.assertEqual(lead.priority, key)
-        self.assertEqual(lead.date_deadline, date(2026, 7, 1))
+        self.assertEqual(lead.x_meta_typed_level, key)
+        self.assertEqual(lead.x_meta_typed_date, date(2026, 7, 1))
+        self.assertEqual(lead.x_meta_typed_count, 12)
+        self.assertIs(lead.x_meta_typed_flag, True)
         # Converted answers are not duplicated as unmapped answer rows.
         self.assertFalse(lead.answer_ids)
 
@@ -116,7 +125,7 @@ class TestLeadDataGaps(IngestFixtureMixin, TransactionCase):
         self.assertEqual(lead.country_id, self.env.ref('base.eg'))
 
     def test_unconvertible_answers_are_kept_not_guessed(self):
-        self._map('budget', 'expected_revenue')
+        self._map('budget', 'x_meta_typed_amount')
         self._map('country', 'country_id')
         self._map('interests', 'tag_ids')
         payload = self._fake_lead(field_data=[
@@ -127,7 +136,7 @@ class TestLeadDataGaps(IngestFixtureMixin, TransactionCase):
         ])
         with self._patch_graph(fetch_lead=payload):
             lead = self.Ingest.ingest_leadgen(self.page, 'LG1', 'manual')
-        self.assertFalse(lead.expected_revenue)
+        self.assertFalse(lead.x_meta_typed_amount)
         self.assertFalse(lead.country_id)
         self.assertFalse(lead.tag_ids)
         kept = {a.question_key: a.value for a in lead.answer_ids}
@@ -157,7 +166,11 @@ class TestLeadDataGaps(IngestFixtureMixin, TransactionCase):
         self.assertEqual(coerce(fields_['active'], ['no'], 'no'), (True, False))
         self.assertEqual(coerce(fields_['active'], ['maybe'], 'maybe'),
                          (False, None))
+        # A slash date is only read when the mapping declares its order.
         self.assertEqual(coerce(fields_['date_deadline'], ['07/01/2026'], ''),
+                         (False, None))
+        self.assertEqual(coerce(fields_['date_deadline'], ['07/01/2026'], '',
+                                date_format='mdy'),
                          (True, date(2026, 7, 1)))
         # Several values for a single-valued target are not guessed between.
         self.assertEqual(coerce(fields_['country_id'], ['Egypt', 'France'], ''),

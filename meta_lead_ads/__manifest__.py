@@ -6,14 +6,15 @@
 
 {
     'name': 'Facebook Lead Ads to CRM',
-    'version': '19.0.1.1.1',
+    'version': '19.0.1.10.0',
     'category': 'Sales/CRM',
     'license': 'OPL-1',
     'summary': 'Bring Facebook & Instagram Lead Ads straight into Odoo CRM. A '
-               'signature-verified webhook plus scheduled backfill capture every '
-               'lead exactly once, enriched with full campaign attribution '
-               '(campaign, ad set, ad, form mapped to UTM), lossless custom-question '
-               'capture, and a built-in leads analytics dashboard.',
+               'signature-verified webhook plus a scheduled backfill create '
+               'at most one CRM lead per Meta lead ID, with campaign '
+               'attribution (campaign, ad set, ad, form mapped to UTM), '
+               'unmapped questions kept on the lead, and a built-in leads '
+               'analytics dashboard.',
     'author': 'CoreSys Builders',
     'maintainer': 'CoreSys Builders',
     'support': 'info@coresysbuilders.com',
@@ -25,6 +26,7 @@
     # leaves Odoo instead of opening static/description/index.html.
     'depends': ['crm', 'utm', 'mail'],
     'post_init_hook': 'post_init_hook',
+    'uninstall_hook': 'uninstall_hook',
     'data': [
         'security/meta_security.xml',
         'security/ir.model.access.csv',
@@ -41,12 +43,15 @@
         'views/crm_lead_views.xml',
         'views/meta_sync_log_views.xml',
         'views/meta_webhook_event_views.xml',
+        'views/meta_leadgen_tombstone_views.xml',
         'views/meta_menus.xml',
         # Must come after meta_menus.xml and meta_onboarding_views.xml: its
         # <delete model="ir.ui.menu"> records need those menu ids to exist.
         'views/meta_settings_menu.xml',
         # References %(...)d actions from the files above, so it loads after them.
         'views/res_config_settings_views.xml',
+        # Meta-only settings screen; same %(...)d actions as the file above.
+        'views/meta_settings_only_views.xml',
         # Dashboard client action and the admin-only "Meta Leads" menu.
         'views/meta_dashboard.xml',
     ],
@@ -57,6 +62,12 @@
             'meta_lead_ads/static/src/dashboard/**/*.js',
             'meta_lead_ads/static/src/dashboard/**/*.xml',
             'meta_lead_ads/static/src/dashboard/**/*.scss',
+            # Field Mappings list renderer with the disabled-mapping banner.
+            'meta_lead_ads/static/src/mapping_list/**/*.js',
+            'meta_lead_ads/static/src/mapping_list/**/*.xml',
+        ],
+        'web.assets_unit_tests': [
+            'meta_lead_ads/static/tests/**/*',
         ],
     },
     'external_dependencies': {'python': []},

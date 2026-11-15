@@ -19,12 +19,24 @@ The raw_payload ACL test lives in test_webhook_security.py.
 """
 import hashlib
 import hmac
+import io
 import json
+import socket
 from unittest import mock
 
-from odoo.tests.common import HttpCase, tagged
+import werkzeug.wrappers
+
+from odoo.tests.common import (
+    HOST, TEST_CURSOR_COOKIE_NAME, HttpCase, TransactionCase, tagged,
+)
+
+from odoo.addons.meta_lead_ads.controllers.main import (
+    MAX_WEBHOOK_BYTES, MetaWebhookController,
+)
 
 WEBHOOK_PATH = '/meta_lead_ads/webhook'
+# Well-formed but wrong: the size checks run before the HMAC.
+JUNK_SIG = 'sha256=' + '0' * 64
 VERIFY_TOKEN_PARAM = 'meta_lead_ads.webhook_verify_token'
 APP_SECRET = 'secret_test_hmac_key'
 VERIFY_TOKEN = 'vtok_known_value_123'
@@ -171,10 +183,12 @@ class TestMetaWebhookEvent(WebhookFixtureMixin, HttpCase):
         self.assertEqual(self.Event.search_count([]), 0)
 
     def test_oversized_unsigned_body_rejected_fast(self):
-        """An oversized unsigned body fails on the missing header (403)."""
+        """A declared length over the cap is refused by the route limit
+        before the signature or the body is looked at."""
         big = b'{"x":"' + b'A' * (64 * 1024 + 100) + b'"}'
         resp = self._post(big, sig_header=None)
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 413)
+        self.assertEqual(resp.headers.get('Connection'), 'close')
         self.assertEqual(self.Event.search_count([]), 0)
 
     def test_replay_idempotent(self):
@@ -242,3 +256,135 @@ class TestMetaWebhookEvent(WebhookFixtureMixin, HttpCase):
         for resp in (forged, unsigned, bad_token):
             self.assertNotIn(APP_SECRET, resp.text)
             self.assertNotIn(VERIFY_TOKEN, resp.text)
+
+    # ---- body cap without Content-Length ---------------------------------
+
+    def test_chunked_oversized_body_rejected_413(self):
+        """A chunked body over the cap gets 413 and queues nothing."""
+        def body():
+            yield b'{"x":"'
+            for _i in range(17):        # 17 x 4 KiB is over 64 KiB
+                yield b'A' * 4096
+            yield b'"}'
+        # A generator body makes requests send Transfer-Encoding: chunked.
+        resp = self.url_open(WEBHOOK_PATH, data=body(), headers={
+            'Content-Type': 'application/json', 'Connection': 'close',
+            'X-Hub-Signature-256': JUNK_SIG})
+        self.assertEqual(resp.status_code, 413)
+        self.assertEqual(self.Event.search_count([]), 0)
+
+    def test_chunked_signed_body_under_cap_accepted(self):
+        """A normal signed delivery sent chunked is still queued."""
+        raw = json.dumps(_leadgen_payload(leadgen_id='LG_CHUNKED')).encode()
+
+        def body():
+            yield raw[:20]
+            yield raw[20:]
+        resp = self.url_open(WEBHOOK_PATH, data=body(), headers={
+            'Content-Type': 'application/json',
+            'X-Hub-Signature-256': _signed(raw, APP_SECRET)})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            self.Event.search_count([('leadgen_id', '=', 'LG_CHUNKED')]), 1)
+
+    def _raw_exchange(self, head, body_parts):
+        """Send a hand-built request on a fresh socket and read until the
+        server closes it. A timeout here means the socket was kept open."""
+        self.env.cr.flush()
+        self.env.cr.clear()
+        with self.allow_requests():
+            cookie = '%s=%s' % (TEST_CURSOR_COOKIE_NAME, self.http_request_key)
+            sock = socket.create_connection((HOST, self.http_port()),
+                                            timeout=10)
+            try:
+                lines = ['POST %s HTTP/1.1' % WEBHOOK_PATH,
+                         'Host: %s:%d' % (HOST, self.http_port()),
+                         'Cookie: %s' % cookie] + head
+                sock.sendall(('\r\n'.join(lines) + '\r\n\r\n').encode())
+                for part in body_parts:
+                    sock.sendall(part)
+                received = b''
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    received += chunk
+            finally:
+                sock.close()
+        head_bytes = received.split(b'\r\n\r\n', 1)[0]
+        status_line, _sep, headers = head_bytes.partition(b'\r\n')
+        return status_line, headers.lower()
+
+    def test_oversized_chunked_closes_connection(self):
+        """An oversized chunked body on a keep-alive request gets 413 and the
+        server drops the socket, so the unread rest can't pose as a request."""
+        parts = [b'1000\r\n' + b'A' * 4096 + b'\r\n'] * 17 + [b'0\r\n\r\n']
+        status_line, headers = self._raw_exchange([
+            'Content-Type: application/json',
+            'Transfer-Encoding: chunked',
+            'X-Hub-Signature-256: %s' % JUNK_SIG,
+        ], parts)
+        self.assertIn(b' 413 ', status_line)
+        self.assertIn(b'connection: close', headers)
+        self.assertEqual(self.Event.search_count([]), 0)
+        # A new connection afterwards is served normally.
+        raw = json.dumps(_leadgen_payload(leadgen_id='LG_AFTER')).encode()
+        resp = self._post(raw, _signed(raw, APP_SECRET))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.Event.search_count([]), 1)
+
+    def test_content_length_oversized_closes_connection(self):
+        """A declared length over the cap gets 413 and a closed socket
+        without the body being read."""
+        status_line, headers = self._raw_exchange([
+            'Content-Type: application/json',
+            'Content-Length: %d' % (MAX_WEBHOOK_BYTES * 4),
+            'X-Hub-Signature-256: %s' % JUNK_SIG,
+        ], [b'{"x":"short"}'])
+        self.assertIn(b' 413 ', status_line)
+        self.assertIn(b'connection: close', headers)
+        self.assertEqual(self.Event.search_count([]), 0)
+
+
+class _EndlessBody(io.RawIOBase):
+    """A request body that never ends, counting what was read from it."""
+
+    def __init__(self):
+        super().__init__()
+        self.read_bytes = 0
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        size = len(b)
+        b[:size] = b'A' * size
+        self.read_bytes += size
+        return size
+
+
+@tagged('post_install', '-at_install')
+class TestWebhookBodyCap(TransactionCase):
+    """The webhook's read stops one byte past the cap."""
+
+    def test_bounded_read_stops_at_limit(self):
+        source = _EndlessBody()
+        req = werkzeug.wrappers.Request({
+            'wsgi.input': source, 'wsgi.input_terminated': True,
+            'wsgi.url_scheme': 'http', 'REQUEST_METHOD': 'POST',
+            'CONTENT_TYPE': 'application/json', 'PATH_INFO': WEBHOOK_PATH,
+        })
+        req.max_content_length = MAX_WEBHOOK_BYTES + 1
+        self.assertEqual(len(req.get_data()), MAX_WEBHOOK_BYTES + 1)
+        self.assertLessEqual(source.read_bytes, MAX_WEBHOOK_BYTES + 1)
+
+    def test_route_carries_limit(self):
+        routing = getattr(MetaWebhookController.meta_webhook,
+                          'original_routing', None)
+        if routing is None:
+            rules = [rule for rule in self.env['ir.http'].routing_map()
+                     .iter_rules() if rule.rule == WEBHOOK_PATH]
+            self.assertTrue(rules)
+            routing = rules[0].endpoint.routing
+        self.assertEqual(routing.get('max_content_length'),
+                         MAX_WEBHOOK_BYTES + 1)

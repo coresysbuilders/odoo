@@ -47,6 +47,19 @@
                                    decoration-warning="meta_connection_status == 'dev_test_only'"
                                    decoration-danger="meta_connection_status == 'auth_failed'"/>
                         </setting>
+                        <setting string="Meta apps"
+                                 help="Only one Meta app per database is supported."
+                                 invisible="not meta_app_conflict_message">
+                            <field name="meta_app_conflict_message" readonly="1" class="text-warning"/>
+                        </setting>
+                        <setting string="Lead reads paused"
+                                 help="Meta asked this app to slow down, so the webhook queue waits for every Page until then. Reading sooner can make Meta extend the block."
+                                 invisible="not meta_lead_fetch_paused_until">
+                            <field name="meta_lead_fetch_paused_until" readonly="1"/>
+                            <button name="action_resume_app_lead_reads" type="object"
+                                    string="Resume lead reads" class="btn-secondary"
+                                    confirm="Resume lead reads for every Page now?"/>
+                        </setting>
                     </block>
 
                     <block title="Configuration" name="meta_config_block"
@@ -101,6 +114,25 @@
                                        required="meta_notify_enabled and meta_notify_target_type == 'group'"
                                        options="{'no_create': True}"/>
                             </div>
+                        </setting>
+                    </block>
+
+                    <block title="Data retention" name="meta_retention_block"
+                           groups="meta_lead_ads.group_meta_admin">
+                        <setting string="Sync log retention"
+                                 help="Days to keep successful and skipped sync rows. Failed rows are kept as traces. From 1 to 3650 days.">
+                            <field name="meta_sync_log_retention_days"/>
+                            <div class="text-muted mt8">
+                                Rows can no longer be kept forever: every value is from 1 day to 3650 days (ten years).
+                            </div>
+                        </setting>
+                        <setting string="Processed webhook rows"
+                                 help="Days to keep webhook rows that were processed. Waiting rows are never removed. From 1 to 3650 days.">
+                            <field name="meta_queue_done_retention_days"/>
+                        </setting>
+                        <setting string="Failed rows"
+                                 help="Days to keep failed webhook rows, and the stored Meta data of failed sync rows. Meta serves a lead for about 90 days. From 1 to 3650 days.">
+                            <field name="meta_failed_retention_days"/>
                         </setting>
                     </block>
 

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <!-- Leads deleted or merged in Odoo. The records are written by the
+       integration only. The merge target is shown as a plain id, never as a
+       link, so the surviving lead's name isn't shown here. -->
+  <record id="meta_leadgen_tombstone_view_list" model="ir.ui.view">
+    <field name="name">meta.leadgen.tombstone.list</field>
+    <field name="model">meta.leadgen.tombstone</field>
+    <field name="arch" type="xml">
+      <list create="0" edit="0" delete="0" default_order="create_date desc">
+        <field name="leadgen_id"/>
+        <field name="create_date" string="Removed On"/>
+        <field name="create_uid" string="Removed By"/>
+        <field name="removal_reason"/>
+        <field name="merged_into_ref"/>
+        <field name="page_id"/>
+        <field name="form_id"/>
+        <field name="company_id" groups="base.group_multi_company"/>
+        <field name="expires_on"/>
+        <!-- Restore checks rights and refuses merges and erased leads
+             itself; hiding the button only saves a click that would fail. -->
+        <button name="action_restore" type="object" string="Restore"
+                class="btn-link" icon="fa-undo"
+                invisible="(removal_reason == 'merged' and merged_into_ref) or removal_reason == 'erased'"
+                confirm="The lead will be fetched from Meta again and imported like a new submission, so it may be added to a matching open lead. A record without a reason may come from a merge done before this version; restoring it brings back the duplicate the merge removed. Continue?"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="meta_leadgen_tombstone_view_form" model="ir.ui.view">
+    <field name="name">meta.leadgen.tombstone.form</field>
+    <field name="model">meta.leadgen.tombstone</field>
+    <field name="arch" type="xml">
+      <form create="0" edit="0" delete="0">
+        <header>
+          <button name="action_restore" type="object" string="Restore"
+                  class="btn-primary"
+                  invisible="(removal_reason == 'merged' and merged_into_ref) or removal_reason == 'erased'"
+                  confirm="The lead will be fetched from Meta again and imported like a new submission, so it may be added to a matching open lead. A record without a reason may come from a merge done before this version; restoring it brings back the duplicate the merge removed. Continue?"/>
+        </header>
+        <sheet>
+          <group>
+            <group>
+              <field name="leadgen_id" readonly="1"/>
+              <field name="removal_reason" readonly="1"/>
+              <field name="merged_into_ref" readonly="1"
+                     invisible="not merged_into_ref"/>
+              <field name="create_date" string="Removed On" readonly="1"/>
+              <field name="create_uid" string="Removed By" readonly="1"/>
+            </group>
+            <group>
+              <field name="page_id" readonly="1"/>
+              <field name="form_id" readonly="1"/>
+              <field name="company_id" readonly="1"
+                     groups="base.group_multi_company"/>
+              <field name="expires_on" readonly="1"/>
+            </group>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="meta_leadgen_tombstone_action" model="ir.actions.act_window">
+    <field name="name">Removed Meta Leads</field>
+    <field name="res_model">meta.leadgen.tombstone</field>
+    <field name="view_mode">list,form</field>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">No removed Meta leads</p>
+      <p>
+        These leads were deleted or merged in Odoo, so webhooks, retries and
+        the scheduled sweeps skip them. Each record is kept for 200 days.
+      </p>
+      <p>
+        Restore fetches a deleted lead from Meta again. A merged lead can't be
+        restored while the lead it was merged into exists: open that lead
+        instead. A lead whose personal data was erased can't be restored.
+      </p>
+    </field>
+  </record>
+
+  <menuitem id="menu_meta_leadgen_tombstone"
+            name="Removed Meta Leads"
+            parent="crm.crm_menu_config"
+            action="meta_leadgen_tombstone_action"
+            groups="meta_lead_ads.group_meta_admin"
+            sequence="53"/>
+</odoo>
