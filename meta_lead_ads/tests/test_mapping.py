@@ -4,12 +4,14 @@
 # part, via any medium, is strictly prohibited and constitutes a license violation.
 # OPL-1: https://www.odoo.com/documentation/18.0/legal/licenses.html#odoo-apps
 
-from odoo.tests.common import TransactionCase, tagged
+from odoo.tests.common import TransactionCase, new_test_user, tagged
 from odoo.exceptions import ValidationError
+
+from .common_typed_targets import TypedTargetsMixin
 
 
 @tagged('post_install', '-at_install')
-class TestMapping(TransactionCase):
+class TestMapping(TypedTargetsMixin, TransactionCase):
     def _form(self):
         acc = self.env['meta.account'].create({'name': 'A', 'account_id': 'A'})
         page = self.env['meta.page'].create({'name': 'P', 'page_id': 'P', 'account_id': acc.id})
@@ -30,15 +32,24 @@ class TestMapping(TransactionCase):
         """Typed crm.lead fields (monetary, relational, date, selection) are valid targets."""
         form = self._form()
         Field = self.env['ir.model.fields']
-        for key, fname in (('budget', 'expected_revenue'),
+        for key, fname in (('budget', 'x_meta_typed_money'),
                            ('country', 'country_id'),
                            ('interests', 'tag_ids'),
-                           ('deadline', 'date_deadline'),
-                           ('priority', 'priority')):
+                           ('deadline', 'x_meta_typed_date'),
+                           ('urgency', 'x_meta_typed_level')):
             m = self.env['meta.field.mapping'].create({
                 'form_id': form.id, 'meta_key': key,
                 'crm_field_id': Field._get('crm.lead', fname).id})
             self.assertEqual(m.crm_field_type, Field._get('crm.lead', fname).ttype)
+
+    def test_manual_typed_targets_offered(self):
+        """The custom typed fields the other tests map onto are real picker options."""
+        offered = {name for name, _label
+                   in self.env['meta.field.mapping']._offered_targets()}
+        for name, field in self.TYPED.items():
+            with self.subTest(field=name):
+                self.assertIn(name, offered)
+                self.assertEqual(field.ttype, self._TYPED_FIELDS[name][0])
 
     def test_mapping_rejects_system_and_readonly_targets(self):
         """System fields, company_id, our own meta_* columns and readonly fields are rejected."""
@@ -70,6 +81,27 @@ class TestMapping(TransactionCase):
             self.env['meta.field.mapping'].create({
                 'form_id': form.id, 'meta_key': 'town',
                 'crm_field_id': city.id})
+
+    def test_meta_admin_gets_same_target_checks(self):
+        """A Meta Admin without access-rights admin can map fields and gets the same refusals."""
+        form = self._form()
+        user = new_test_user(
+            self.env, 'map_meta_admin',
+            groups='base.group_user,meta_lead_ads.group_meta_admin')
+        self.assertFalse(user.has_group('base.group_erp_manager'))
+        Field = self.env['ir.model.fields']
+        city = Field._get('crm.lead', 'city')
+        Mapping = self.env['meta.field.mapping'].with_user(user)
+        m = Mapping.create({
+            'form_id': form.id, 'meta_key': 'city', 'crm_field_id': city.id})
+        self.assertEqual(m.form_id, form)
+        with self.assertRaises(ValidationError):
+            Mapping.create({'form_id': form.id, 'meta_key': 'town',
+                            'crm_field_id': city.id})
+        other = Field.search([('model', '!=', 'crm.lead')], limit=1)
+        with self.assertRaises(ValidationError):
+            Mapping.create({'form_id': form.id, 'meta_key': 'x',
+                            'crm_field_id': other.id})
 
     def test_same_field_across_forms_allowed(self):
         """Different forms may target the same field, since a lead comes from one form."""

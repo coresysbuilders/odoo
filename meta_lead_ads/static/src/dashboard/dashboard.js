@@ -242,6 +242,10 @@ export class MetaLeadsDashboard extends Component {
         return this._rankingRows();
     }
 
+    get donutRows() {
+        return this._donutRows();
+    }
+
     setDrilldown(level) {
         if (this.state.loading || this.state.drilldown === level) {
             return;
@@ -330,6 +334,15 @@ export class MetaLeadsDashboard extends Component {
         return `${Math.round(fraction * 100)}%`;
     }
 
+    formatRate(fraction) {
+        // An empty rate means there was nothing to measure. A dash says so,
+        // where a blank would look like the figure failed to load.
+        if (fraction === null || fraction === undefined) {
+            return "—";
+        }
+        return this.formatPercent(fraction);
+    }
+
     deltaClass(value) {
         if (value === null || value === undefined) {
             return "";
@@ -345,19 +358,25 @@ export class MetaLeadsDashboard extends Component {
     }
 
     statusPillClass(status) {
-        // Colour only; the pill always shows a text label as well.
+        // Colour only; the pill always shows a text label as well. Green and
+        // red need evidence. Quiet and no_activity only mean nothing arrived
+        // recently, so they stay grey.
         const map = {
             success: "o_meta_pill_ok",
             skipped_idempotent: "o_meta_pill_ok",
             skipped_duplicate: "o_meta_pill_ok",
+            skipped_removed: "o_meta_pill_ok",
             ok: "o_meta_pill_ok",
             valid: "o_meta_pill_ok",
             running: "o_meta_pill_ok",
+            quiet: "o_meta_pill_neutral",
+            no_activity: "o_meta_pill_neutral",
             pending: "o_meta_pill_warn",
             waiting: "o_meta_pill_warn",
             expiring: "o_meta_pill_warn",
-            unknown: "o_meta_pill_warn",
+            backlog: "o_meta_pill_warn",
             failed: "o_meta_pill_bad",
+            failing: "o_meta_pill_bad",
             invalid: "o_meta_pill_bad",
             not_running: "o_meta_pill_bad",
             stalled: "o_meta_pill_bad",
@@ -371,6 +390,7 @@ export class MetaLeadsDashboard extends Component {
             success: "Synced",
             skipped_idempotent: "Skipped",
             skipped_duplicate: "Skipped",
+            skipped_removed: "Removed",
             pending: "Pending",
             failed: "Failed",
         };

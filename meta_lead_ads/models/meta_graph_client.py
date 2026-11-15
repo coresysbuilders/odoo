@@ -11,6 +11,8 @@ import hashlib
 import hmac
 import json
 import logging
+import math
+import time
 
 import requests
 
@@ -33,14 +35,19 @@ _SENSITIVE_PARAM_KEYS = {
     'fb_exchange_token',
 }
 
-# Graph throttle codes. 80006 is the LeadGen form throttle and 80001 the
-# Page/system-user one; missing either would skip backoff and burn the quota.
-RATE_LIMIT_CODES = {4, 17, 32, 613, 80001, 80006}
+# Graph throttle codes. 80005 is the Lead Ads throttle and 80001 the Page /
+# system-user one. 80006 is Messenger's; it stays because treating it as a
+# throttle does no harm. A code missing here would turn a throttle into a
+# permanent failure and lose the backoff hint.
+RATE_LIMIT_CODES = {4, 17, 32, 613, 80001, 80005, 80006}
 AUTH_CODE = 190
 
 # Cap on pages per _iter_paged sweep, in case a cursor never terminates. Far
 # above anything the forms/leads/pages edges return in practice.
 _MAX_PAGES = 1000
+
+# Read at call time so tests can swap in a fake clock.
+_monotonic = time.monotonic
 
 
 def _redact(params):
@@ -54,30 +61,50 @@ def _redact(params):
     return safe
 
 
-def _buc_minutes(buc_header):
+def _no_json_constant(name):
+    # json.loads accepts Infinity and NaN, which are not wait times.
+    raise ValueError(name)
+
+
+def _buc_minutes(buc_header, object_id=None):
     """Return the largest backoff hint (minutes) in X-Business-Use-Case-Usage.
 
     The header is a JSON string: an object keyed by BUC/app/page id, each value
-    a list of dicts that may carry ``estimated_time_to_regain_access``. Returns
-    None when the header is missing or malformed; never raises.
+    a list of dicts that may carry ``estimated_time_to_regain_access``. When
+    ``object_id`` is one of the keys only its entries count: the header can
+    also report other Pages, whose limits don't hold this call back.
+    Estimates that are not finite numbers are dropped. Returns None when the
+    header is missing or malformed; never raises.
     """
     if not buc_header:
         return None
     try:
-        data = json.loads(buc_header)
-    except (TypeError, ValueError):
+        data = json.loads(buc_header, parse_constant=_no_json_constant)
+    except (TypeError, ValueError, RecursionError):
         return None
+    if not isinstance(data, dict):
+        return None
+    if object_id and str(object_id) in data:
+        groups = [data[str(object_id)]]
+    else:
+        groups = list(data.values())
     minutes = []
-    if isinstance(data, dict):
-        for value in data.values():
-            if not isinstance(value, list):
+    for value in groups:
+        if not isinstance(value, list):
+            continue
+        for entry in value:
+            if not isinstance(entry, dict):
                 continue
-            for entry in value:
-                if not isinstance(entry, dict):
-                    continue
-                eta = entry.get('estimated_time_to_regain_access')
-                if isinstance(eta, (int, float)) and not isinstance(eta, bool):
-                    minutes.append(eta)
+            eta = entry.get('estimated_time_to_regain_access')
+            if not isinstance(eta, (int, float)) or isinstance(eta, bool):
+                continue
+            try:
+                finite = math.isfinite(eta)
+            except OverflowError:
+                # An int too big for a float.
+                finite = False
+            if finite:
+                minutes.append(eta)
     return max(minutes) if minutes else None
 
 
@@ -99,13 +126,14 @@ class MetaGraphClient(models.AbstractModel):
 
     @api.model
     def _request(self, token, path, params=None, method='GET',
-                 app_secret=None, inject_token=True):
+                 app_secret=None, inject_token=True, buc_id=None):
         """Make one Graph call against the pinned-version base URL.
 
         The path must be bare (no URL, query or traversal), so a stored or
         payload id can't redirect the call elsewhere. The token only travels as
         a query param on a private copy of ``params`` and is never logged or
-        left in a re-raised transport error.
+        left in a re-raised transport error. ``buc_id`` names the object whose
+        usage entry gives a throttle's wait (see _buc_minutes).
         """
         # '..' and '%' matter: an id like '../../debug_token' (or its
         # %2e%2e/%2f form) would step off the pinned /vXX.0 once requests
@@ -150,10 +178,10 @@ class MetaGraphClient(models.AbstractModel):
             # so the token can't leak through a traceback.
             raise MetaTransientError(
                 'Transient transport error for path %s' % path) from None
-        return self._handle_response(resp)
+        return self._handle_response(resp, buc_id=buc_id)
 
     @api.model
-    def _handle_response(self, resp):
+    def _handle_response(self, resp, buc_id=None):
         """Return the JSON body, or raise the matching typed Meta exception.
 
         An error envelope wins over the HTTP status: code 190 is auth, then the
@@ -189,7 +217,7 @@ class MetaGraphClient(models.AbstractModel):
                     err.get('message'), code=code, subcode=subcode,
                     app_usage=resp.headers.get('X-App-Usage'),
                     buc_usage=buc,
-                    retry_after_min=_buc_minutes(buc),
+                    retry_after_min=_buc_minutes(buc, buc_id),
                     fbtrace_id=fbtrace, error_type=etype,
                     error_user_title=euser_title, error_user_msg=euser_msg,
                     is_transient=transient)
@@ -211,7 +239,7 @@ class MetaGraphClient(models.AbstractModel):
                     err.get('message') or 'Graph 429 throttle',
                     code=code, subcode=subcode,
                     app_usage=resp.headers.get('X-App-Usage'),
-                    buc_usage=buc, retry_after_min=_buc_minutes(buc),
+                    buc_usage=buc, retry_after_min=_buc_minutes(buc, buc_id),
                     fbtrace_id=fbtrace, error_type=etype)
             raise MetaPermanentError(
                 err.get('message'), code=code, subcode=subcode,
@@ -228,7 +256,7 @@ class MetaGraphClient(models.AbstractModel):
             raise MetaRateLimitError(
                 'Graph 429 throttle',
                 app_usage=resp.headers.get('X-App-Usage'),
-                buc_usage=buc, retry_after_min=_buc_minutes(buc))
+                buc_usage=buc, retry_after_min=_buc_minutes(buc, buc_id))
         if resp.ok:
             # 2xx with an empty or non-JSON body.
             raise MetaPermanentError(
@@ -241,7 +269,8 @@ class MetaGraphClient(models.AbstractModel):
         """GET /{leadgen_id}: read one lead using the meta.page's token.
 
         Signs the call with the account's App Secret. Typed Meta exceptions
-        propagate to the caller.
+        propagate to the caller. A throttle's wait is read from the Page's
+        own usage entry when Meta sends one.
         """
         return self._request(
             page.access_token, leadgen_id,
@@ -249,31 +278,36 @@ class MetaGraphClient(models.AbstractModel):
                               'adset_id,adset_name,campaign_id,campaign_name,'
                               'form_id,platform'},
             app_secret=page.account_id.app_secret,
+            buc_id=page.page_id,
         )
 
     @api.model
     def resolve_name(self, token, object_type, graph_id, payload_name=None,
-                     app_secret=None):
+                     app_secret=None, company=None):
         """Return the name of a campaign/ad set/ad, calling Graph only on a miss.
 
-        Uses ``payload_name`` if the lead already carried it, then the
-        meta.name.cache table, and only then one Graph call whose result is
-        cached. Pass ``app_secret`` so the lookup still works on apps with
-        "Require App Secret Proof" turned on.
+        Uses ``payload_name`` if the lead already carried it, then
+        ``company``'s rows in the meta.name.cache table, and only then one
+        Graph call whose result is cached for that company. Pass
+        ``app_secret`` so the lookup still works on apps with "Require App
+        Secret Proof" turned on.
         """
         if payload_name:
             return payload_name
         Cache = self.env['meta.name.cache']
-        hit = Cache._lookup(object_type, graph_id)
-        if hit:
-            return hit
+        # Cached names belong to one company. Without one there is no row we
+        # may read or write, so ask Graph and keep nothing.
+        if company:
+            hit = Cache._lookup(object_type, graph_id, company)
+            if hit:
+                return hit
         data = self._request(token, graph_id, params={'fields': 'name'},
                              app_secret=app_secret)
         name = data.get('name')
         # Don't cache an empty name: _lookup would read it as a miss and we'd
         # hit Graph on every lead.
-        if name:
-            Cache._store(object_type, graph_id, name)
+        if name and company:
+            Cache._store(object_type, graph_id, name, company)
         return name
 
     @api.model
@@ -311,11 +345,22 @@ class MetaGraphClient(models.AbstractModel):
         return body.get('data', {})
 
     @api.model
-    def _iter_paged(self, token, path, params=None, app_secret=None):
+    def _iter_paged(self, token, path, params=None, app_secret=None,
+                    status=None, buc_id=None, deadline=None):
         """Yield every item in data[] across all pages.
 
         Follows paging.cursors.after on the bare path. paging.next is a full
-        URL, which _request would refuse.
+        URL, which _request would refuse, so it is only read as the sign that
+        more pages exist: the loop stops when Meta sends no next link, even if
+        the last page still carries a cursor.
+
+        Callers that need to know whether they saw the whole listing pass a
+        dict as ``status``. 'truncated' is set when Meta's listing could not
+        be read to the end: a next link without a cursor, a repeated cursor or
+        the page cap. 'deadline_hit' is set when ``deadline`` (a
+        time.monotonic value) passed before the next page; the first page is
+        always requested. ``buc_id`` names the object whose usage entry gives
+        a throttle's wait.
         """
         call_params = dict(params or {})
         # Stop on a repeated cursor or the page cap, and log it, so a looping
@@ -324,18 +369,39 @@ class MetaGraphClient(models.AbstractModel):
         pages = 0
         while True:
             body = self._request(token, path, params=call_params,
-                                 app_secret=app_secret)
+                                 app_secret=app_secret, buc_id=buc_id)
             for item in (body.get('data') or []):
                 yield item
-            after = (((body.get('paging') or {}).get('cursors') or {})
-                     .get('after'))
+            paging = body.get('paging') or {}
+            after = (paging.get('cursors') or {}).get('after')
+            if not paging.get('next'):
+                return
             if not after:
+                # Meta says there is more but gave us no way to read it. The
+                # listing is not complete, so the caller must not move past it.
+                _logger.warning(
+                    "meta.graph: pagination halted for path %s: next link "
+                    "without a cursor", path)
+                if status is not None:
+                    status['truncated'] = True
                 return
             pages += 1
             if after in seen_after or pages >= _MAX_PAGES:
                 _logger.warning(
                     "meta.graph: pagination halted for path %s after %s page(s) "
                     "(repeated cursor or page cap reached)", path, pages)
+                if status is not None:
+                    status['truncated'] = True
+                return
+            if deadline is not None and _monotonic() >= deadline:
+                # The caller ran out of its own time; Meta's listing may be
+                # fine. Kept apart from 'truncated' so the caller decides what
+                # an unfinished read means.
+                _logger.info(
+                    "meta.graph: pagination stopped for path %s after %s "
+                    "page(s) (time budget used)", path, pages)
+                if status is not None:
+                    status['deadline_hit'] = True
                 return
             seen_after.add(after)
             call_params = dict(params or {})

@@ -9,6 +9,8 @@
 from odoo import fields, models, _
 from odoo.exceptions import UserError
 
+from ..models.exceptions import MetaIngestRaceError, MetaLeadRemovedError
+
 
 class MetaIngestLeadgen(models.TransientModel):
     _name = 'meta.ingest.leadgen'
@@ -18,17 +20,37 @@ class MetaIngestLeadgen(models.TransientModel):
     leadgen_id = fields.Char(string='Meta Lead ID', required=True)
 
     def action_ingest(self):
-        """Ingest the lead through ingest_leadgen and open the resulting crm.lead."""
+        """Ingest the lead through ingest_leadgen and open the resulting crm.lead.
+
+        If the caller can't read the lead (no CRM rights, or it sits in a
+        company they haven't selected) a plain notification is shown instead,
+        without the lead's name."""
         self.ensure_one()
         leadgen_id = (self.leadgen_id or '').strip()
         if not leadgen_id:
             raise UserError(_("Paste a Meta Lead ID."))
-        lead = self.env['meta.lead.ingest'].ingest_leadgen(
-            self.page_id, leadgen_id, trigger='manual')
-        return {
-            'type': 'ir.actions.act_window',
-            'res_model': 'crm.lead',
-            'res_id': lead.id,
-            'view_mode': 'form',
-            'target': 'current',
-        }
+        # A lead deleted in Odoo only comes back through Restore, whatever
+        # this form was opened with. The record is found as sudo but read
+        # back as the caller, so only admins who can see it learn who
+        # deleted it.
+        tomb = self.env['meta.leadgen.tombstone'].sudo().search(
+            [('leadgen_id', '=', leadgen_id)], limit=1)
+        if tomb:
+            raise UserError(tomb.with_env(self.env)._refusal_message())
+        try:
+            lead = self.env['meta.lead.ingest'].ingest_leadgen(
+                self.page_id, leadgen_id, trigger='manual')
+        except MetaIngestRaceError:
+            # Another import of the same lead hasn't committed yet.
+            raise UserError(_(
+                "This lead is being imported right now. Try again in a "
+                "moment.")) from None
+        except MetaLeadRemovedError:
+            # Deleted after the check above.
+            tomb = self.env['meta.leadgen.tombstone'].sudo().search(
+                [('leadgen_id', '=', leadgen_id)], limit=1)
+            message = (tomb.with_env(self.env)._refusal_message() if tomb
+                       else _("This lead was deleted in Odoo and can't be "
+                              "imported again."))
+            raise UserError(message) from None
+        return self.env['meta.lead.ingest']._lead_result_action(lead)

@@ -134,6 +134,14 @@ $meta-sp-3xl: 64px;
         line-height: 1.5;
     }
 
+    // Which date the KPI counts by, right under its label.
+    .o_meta_kpi_basis {
+        font-size: 12px;
+        font-weight: 400;
+        line-height: 1.5;
+        opacity: 0.8;
+    }
+
     .o_meta_kpi_value {
         font-size: 28px;
         font-weight: 600;
@@ -329,7 +337,7 @@ $meta-sp-3xl: 64px;
 
     .o_meta_health_name {
         font-weight: 600;
-        min-width: 90px;
+        min-width: 96px;
     }
 
     .o_meta_health_caption {
@@ -359,6 +367,12 @@ $meta-sp-3xl: 64px;
         &.o_meta_pill_bad {
             background: rgba(214, 69, 69, 0.15);
             color: $meta-destructive;
+        }
+
+        // No evidence either way (a quiet webhook), so neither green nor red.
+        &.o_meta_pill_neutral {
+            background: rgba(6, 21, 44, 0.08);
+            color: $meta-ink;
         }
     }
 

@@ -14,7 +14,10 @@ from . import meta_lead_answer
 from . import meta_name_cache
 from . import meta_graph_client
 from . import crm_lead
+from . import meta_leadgen_tombstone
 from . import meta_sync_log
+from . import meta_sync_stats
+from . import meta_sync_log_quarantine
 from . import meta_lead_ingest
 from . import meta_webhook_event
 from . import res_config_settings

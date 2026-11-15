@@ -6,10 +6,17 @@
 
 # Cache of Meta object names (campaign, ad set, ad, form id -> name).
 # Campaign and ad names are commercially sensitive, so only Meta groups can
-# read it.
+# read it, and each company only sees the names its own Pages fetched.
+import logging
+
 from psycopg2 import IntegrityError
+from psycopg2.extensions import TransactionRollbackError
 
 from odoo import api, fields, models
+
+from .meta_lead_ingest import _quiet_lost_races
+
+_logger = logging.getLogger(__name__)
 
 
 class MetaNameCache(models.Model):
@@ -23,49 +30,84 @@ class MetaNameCache(models.Model):
     graph_id = fields.Char(required=True, index=True)
     name = fields.Char()
     resolved_at = fields.Datetime(default=fields.Datetime.now)
+    company_id = fields.Many2one(
+        'res.company', required=True, index=True, ondelete='cascade')
 
     # Enforced in the database because webhook and cron can write the same
-    # entry at the same time.
+    # entry at the same time. The key stays the same as before the company
+    # was added, so an upgrade replaces the old constraint instead of keeping
+    # it next to this one.
     _sql_constraints = [
-        ('object_graph_uniq', 'unique(object_type, graph_id)',
+        ('object_graph_uniq', 'unique(object_type, graph_id, company_id)',
          'A cache entry for this object already exists.'),
     ]
 
     @api.model
-    def _lookup(self, object_type, graph_id):
-        """Return the cached name for (object_type, graph_id) or False on a miss."""
-        rec = self.search([('object_type', '=', object_type),
-                           ('graph_id', '=', graph_id)], limit=1)
+    def _key_domain(self, object_type, graph_id, company):
+        # Callers run as sudo, so the company has to be in the domain; the
+        # record rule doesn't apply there.
+        return [('object_type', '=', object_type),
+                ('graph_id', '=', graph_id),
+                ('company_id', '=', company.id)]
+
+    @api.model
+    def _lookup(self, object_type, graph_id, company):
+        """Return the name ``company`` cached for (object_type, graph_id), or
+        False on a miss."""
+        rec = self.search(
+            self._key_domain(object_type, graph_id, company), limit=1)
         return rec.name if rec else False
 
     @api.model
-    def _store(self, object_type, graph_id, name):
-        """Create or update the cache entry; safe against concurrent writers.
+    def _store(self, object_type, graph_id, name, company):
+        """Create or update ``company``'s cache entry, best effort.
 
-        The create runs in a savepoint. If another worker inserted the same
-        entry first, the IntegrityError is caught there and that row is
-        updated instead, without breaking the outer transaction.
+        Every write runs in its own savepoint and is flushed there. If another
+        worker inserted the same entry first, that row is updated instead. If
+        a concurrent write wins outright, nothing is stored and an empty
+        recordset is returned; the caller's transaction stays usable and the
+        name it already has is still right.
         """
-        existing = self.search([('object_type', '=', object_type),
-                               ('graph_id', '=', graph_id)], limit=1)
+        # Write out anything pending first, so an error from someone else's
+        # write isn't mistaken for a lost cache write below.
+        self.env.cr.flush()
+        try:
+            # Two workers refreshing the same entry conflict under repeatable
+            # read. That is expected, so keep it out of the error log.
+            with _quiet_lost_races():
+                return self._store_row(object_type, graph_id, name, company)
+        except TransactionRollbackError as e:
+            _logger.info(
+                "meta_lead_ads: name cache entry for %s %s (company %s) not "
+                "saved (%s); it is looked up again next time",
+                object_type, graph_id, company.id, type(e).__name__)
+            return self.browse()
+
+    @api.model
+    def _store_row(self, object_type, graph_id, name, company):
+        values = {'name': name, 'resolved_at': fields.Datetime.now()}
+        domain = self._key_domain(object_type, graph_id, company)
+        existing = self.search(domain, limit=1)
         if existing:
-            existing.write({'name': name, 'resolved_at': fields.Datetime.now()})
+            with self.env.cr.savepoint():
+                existing.write(values)
+                existing.flush_recordset()
             return existing
         try:
             with self.env.cr.savepoint():
-                rec = self.create({
-                    'object_type': object_type, 'graph_id': graph_id,
-                    'name': name, 'resolved_at': fields.Datetime.now(),
-                })
+                rec = self.create(dict(values, object_type=object_type,
+                                       graph_id=graph_id,
+                                       company_id=company.id))
                 # Odoo delays the INSERT until flush. Flush now so a unique
                 # violation is raised inside the savepoint, not after it.
                 rec.flush_recordset()
             return rec
         except IntegrityError:
             # Another worker created it first; update that row.
-            rec = self.search([('object_type', '=', object_type),
-                              ('graph_id', '=', graph_id)], limit=1)
-            rec.write({'name': name, 'resolved_at': fields.Datetime.now()})
+            with self.env.cr.savepoint():
+                rec = self.search(domain, limit=1)
+                rec.write(values)
+                rec.flush_recordset()
             return rec
 
     def action_refresh_names(self):

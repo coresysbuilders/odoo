@@ -10,13 +10,35 @@
     <field name="model">meta.sync.log</field>
     <field name="arch" type="xml">
       <list>
+        <header>
+          <!-- The action skips rows already erased and refuses rows of a
+               lead that still exists. -->
+          <button name="action_erase_personal_data" type="object"
+                  string="Erase Personal Data"
+                  groups="meta_lead_ads.group_meta_admin"
+                  confirm="Erase the stored Meta data of this Meta lead? Its payload is removed from every sync and webhook row, the lead can't be retried, and the automatic syncs won't bring it back. At most 200 rows at a time. This can't be undone."/>
+          <!-- Rows with no company that still hold a payload are hidden
+               from every list; this opens an ids-only snapshot of them. -->
+          <button name="action_open_quarantined_rows" type="object"
+                  string="Quarantined Rows" display="always"
+                  groups="meta_lead_ads.group_meta_admin"/>
+        </header>
         <field name="create_date"/>
         <field name="meta_leadgen_id"/>
         <field name="status"/>
+        <field name="payload_cleared" optional="show" widget="badge"/>
         <field name="trigger"/>
         <field name="match_key"/>
+        <field name="match_candidates" optional="hide"/>
+        <field name="match_candidates_truncated" optional="hide"/>
+        <field name="match_other_ids" optional="hide"/>
         <field name="retry_count"/>
         <field name="lead_id"/>
+        <!-- CRM managers read sync logs but not Pages or forms. -->
+        <field name="page_id" groups="meta_lead_ads.group_meta_user"/>
+        <field name="form_id" groups="meta_lead_ads.group_meta_user"
+               optional="hide"/>
+        <field name="company_id" groups="base.group_multi_company"/>
       </list>
     </field>
   </record>
@@ -30,17 +52,39 @@
           <!-- Other users can read logs but not write them, so hide a button
                that would only fail for them. action_retry does its own check. -->
           <button name="action_retry" string="Retry" type="object"
-                  class="btn-primary" invisible="status != 'failed'"
+                  class="btn-primary"
+                  invisible="status != 'failed' or payload_cleared == 'erased'"
                   groups="meta_lead_ads.group_meta_admin"/>
+          <!-- Only for rows that never became a lead: a lead's data is
+               erased from the lead itself. -->
+          <button name="action_erase_personal_data" type="object"
+                  string="Erase Personal Data"
+                  invisible="payload_cleared == 'erased' or lead_id or not meta_leadgen_id"
+                  groups="meta_lead_ads.group_meta_admin"
+                  confirm="Erase the stored Meta data of this Meta lead? Its payload is removed from every sync and webhook row, the lead can't be retried, and the automatic syncs won't bring it back. At most 200 rows at a time. This can't be undone."/>
         </header>
         <sheet>
           <group>
             <field name="meta_leadgen_id" readonly="1"/>
             <field name="status" readonly="1"/>
+            <field name="payload_cleared" readonly="1"
+                   invisible="not payload_cleared"/>
             <field name="trigger" readonly="1"/>
             <field name="match_key" readonly="1"/>
+            <field name="match_candidates" readonly="1"
+                   invisible="match_candidates &lt; 2"/>
+            <field name="match_candidates_truncated" readonly="1"
+                   invisible="match_candidates &lt; 2"/>
+            <field name="match_other_ids" readonly="1"
+                   invisible="match_candidates &lt; 2"/>
             <field name="retry_count" readonly="1"/>
             <field name="lead_id" readonly="1"/>
+            <field name="page_id" groups="meta_lead_ads.group_meta_user"
+                   readonly="1"/>
+            <field name="form_id" groups="meta_lead_ads.group_meta_user"
+                   readonly="1"/>
+            <field name="company_id" readonly="1"
+                   groups="base.group_multi_company"/>
             <field name="error_message" readonly="1"/>
           </group>
           <group string="Raw Payload (admin only)" groups="meta_lead_ads.group_meta_admin">
@@ -48,6 +92,25 @@
           </group>
         </sheet>
       </form>
+    </field>
+  </record>
+
+  <!-- Snapshot of quarantined sync rows: ids, status and date only. -->
+  <record id="meta_sync_log_quarantine_view_list" model="ir.ui.view">
+    <field name="name">meta.sync.log.quarantine.list</field>
+    <field name="model">meta.sync.log.quarantine</field>
+    <field name="arch" type="xml">
+      <list create="0" edit="0" delete="0">
+        <header>
+          <button name="action_erase_personal_data" type="object"
+                  string="Erase Personal Data"
+                  confirm="Erase the stored Meta data of this Meta lead? Its payload is removed from every sync and webhook row, the lead can't be retried, and the automatic syncs won't bring it back. At most 200 rows at a time. This can't be undone."/>
+        </header>
+        <field name="logged_at"/>
+        <field name="leadgen_id"/>
+        <field name="status"/>
+        <field name="log_ref" optional="hide"/>
+      </list>
     </field>
   </record>
 

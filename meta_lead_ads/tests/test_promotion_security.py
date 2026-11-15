@@ -62,3 +62,22 @@ class TestPromotionSecurity(TransactionCase):
                 'answer_id': answer.id, 'lead_id': lead.id})
         with self.assertRaises(AccessError):
             wizard.with_user(self.non_admin).action_promote()
+
+    def _admin_wizard(self):
+        form = self._form()
+        lead, answer = self._lead_with_answer(form)
+        return self.env['meta.promote.answer'].with_user(
+            self.meta_admin).create({
+                'answer_id': answer.id, 'lead_id': lead.id})
+
+    def test_non_admin_cannot_confirm_reuse(self):
+        """action_confirm_reuse() refuses a non-admin called over RPC."""
+        wizard = self._admin_wizard()
+        with self.assertRaises(AccessError):
+            wizard.with_user(self.non_admin).action_confirm_reuse()
+
+    def test_non_admin_cannot_go_back_to_name(self):
+        """action_back_to_name() refuses a non-admin called over RPC."""
+        wizard = self._admin_wizard()
+        with self.assertRaises(AccessError):
+            wizard.with_user(self.non_admin).action_back_to_name()

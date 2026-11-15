@@ -20,6 +20,8 @@ from odoo.exceptions import AccessError
 
 from odoo.addons.meta_lead_ads.models import res_config_settings as _rcs
 
+from .test_multi_company import MultiCompanyFixtureMixin
+
 LEAD_NAME_PARAM = 'meta_lead_ads.lead_name_template'
 
 
@@ -170,3 +172,85 @@ class TestRetroRename(TransactionCase):
         self.assertFalse(lead.meta_name_is_generated)
         lead.write({'name': "Regenerated", 'meta_name_is_generated': True})
         self.assertTrue(lead.meta_name_is_generated)
+
+
+@tagged('post_install', '-at_install')
+class TestRetroRenameCompany(MultiCompanyFixtureMixin, TransactionCase):
+    """Rename and connection status follow the companies selected in the
+    switcher."""
+
+    def setUp(self):
+        super().setUp()
+        self.env['ir.config_parameter'].sudo().set_param(
+            LEAD_NAME_PARAM, "{form_name} / {campaign_name}")
+        # Only the fixture account may count toward the connection status.
+        self.env['meta.account'].search(
+            [('id', '!=', self.account.id)]).write({'active': False})
+        self.lead_a = self._meta_lead(self.co_a, 'LGC_A')
+        self.lead_b = self._meta_lead(self.co_b, 'LGC_B')
+        self.lead_blank = self._meta_lead(False, 'LGC_N')
+        self.assertFalse(self.lead_blank.company_id)
+
+    def _meta_lead(self, company, leadgen_id, generated=True):
+        # No salesperson or team, so crm's own company checks stay quiet.
+        return self.env['crm.lead'].create({
+            'name': "Old title", 'type': 'lead',
+            'company_id': company.id if company else False,
+            'user_id': False, 'team_id': False,
+            'meta_leadgen_id': leadgen_id,
+            'meta_name_is_generated': generated,
+            'meta_form_name': 'Spring', 'meta_campaign_name': 'Q2'})
+
+    def _settings(self, user, companies):
+        return (self.env['res.config.settings'].with_user(user)
+                .with_context(allowed_company_ids=companies.ids).create({}))
+
+    def _retro(self, user, companies):
+        result = self._settings(user, companies).action_retro_rename_meta_leads()
+        return result['params']['message']
+
+    def test_retro_rename_company_scope(self):
+        self._retro(self.admin_a, self.co_a)
+        self.assertEqual(self.lead_a.name, "Spring / Q2")
+        self.assertEqual(self.lead_blank.name, "Spring / Q2")
+        self.assertEqual(self.lead_b.name, "Old title")
+
+    def test_retro_rename_skipped_counts_scoped(self):
+        self._meta_lead(self.co_a, 'LGC_MA', generated=False)
+        self._meta_lead(self.co_b, 'LGC_MB', generated=False)
+        message = self._retro(self.admin_a, self.co_a)
+        self.assertIn(" 1 manually-edited lead(s)", message)
+
+    def test_retro_rename_notification_names_companies(self):
+        message = self._retro(self.admin_a, self.co_a)
+        self.assertIn(self.co_a.name, message)
+        self.assertNotIn(self.co_b.name, message)
+        message = self._retro(self.admin_ab, self.co_a | self.co_b)
+        self.assertIn(self.co_a.name, message)
+        self.assertIn(self.co_b.name, message)
+
+    def test_retro_rename_forged_context_denied(self):
+        settings = self._settings(self.admin_a, self.co_a)
+        for forged in ([self.co_b.id], [self.co_a.id, self.co_b.id]):
+            with self.assertRaises(AccessError):
+                settings.with_context(
+                    allowed_company_ids=forged).action_retro_rename_meta_leads()
+        for lead in (self.lead_a, self.lead_b, self.lead_blank):
+            self.assertEqual(lead.name, "Old title")
+
+    def test_connection_status_scoped(self):
+        self.account.access_status = 'auth_failed'
+        self.env['meta.account'].create({
+            'name': 'Acct B', 'account_id': 'ACCB_RR',
+            'company_id': self.co_b.id,
+            'access_status': 'lead_retrieval_granted'})
+        settings = self._settings(self.admin_a, self.co_a)
+        self.assertEqual(settings.meta_connection_status, 'auth_failed')
+
+    def test_connection_status_destination_account(self):
+        # The only account sits in company A but feeds page_b, which is
+        # routed to company B.
+        self.account.access_status = 'lead_retrieval_granted'
+        settings = self._settings(self.admin_b, self.co_b)
+        self.assertEqual(settings.meta_connection_status,
+                         'lead_retrieval_granted')

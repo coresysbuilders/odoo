@@ -42,4 +42,120 @@
         <field name="domain_force">[('create_uid', '=', user.id)]</field>
         <field name="groups" eval="[(4, ref('group_meta_admin'))]"/>
     </record>
+
+    <!-- Company rules. No groups, so they apply to every user, like crm's
+         own company rule. Ingest, crons and the webhook run privileged. -->
+    <record id="rule_meta_account_company" model="ir.rule">
+        <field name="name">Meta account: multi-company</field>
+        <field name="model_id" ref="model_meta_account"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_meta_page_company" model="ir.rule">
+        <field name="name">Meta page: multi-company</field>
+        <field name="model_id" ref="model_meta_page"/>
+        <field name="domain_force">[('lead_company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_meta_lead_form_company" model="ir.rule">
+        <field name="name">Meta lead form: multi-company</field>
+        <field name="model_id" ref="model_meta_lead_form"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_meta_field_mapping_company" model="ir.rule">
+        <field name="name">Meta field mapping: multi-company</field>
+        <field name="model_id" ref="model_meta_field_mapping"/>
+        <field name="domain_force">[('form_id.company_id', 'in', company_ids)]</field>
+    </record>
+    <!-- Cached campaign, ad and form names belong to the company whose Page
+         fetched them. Ingest reads the cache through sudo and passes the
+         company itself. -->
+    <record id="rule_meta_name_cache_company" model="ir.rule">
+        <field name="name">Meta name cache: multi-company</field>
+        <field name="model_id" ref="model_meta_name_cache"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <!-- A row without a company is shared only while it holds no payload.
+         A blank row with a payload lost both its lead and its Page, so only
+         privileged code reads it. -->
+    <record id="rule_meta_sync_log_company" model="ir.rule">
+        <field name="name">Meta sync log: multi-company</field>
+        <field name="model_id" ref="model_meta_sync_log"/>
+        <field name="domain_force">['|', ('company_id', 'in', company_ids), '&amp;', ('company_id', '=', False), ('raw_payload', '=', False)]</field>
+    </record>
+    <!-- Blank events come from unknown Pages and hold Meta ids only. -->
+    <record id="rule_meta_webhook_event_company" model="ir.rule">
+        <field name="name">Meta webhook event: multi-company</field>
+        <field name="model_id" ref="model_meta_webhook_event"/>
+        <field name="domain_force">[('company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <!-- Blank-company totals are counts only, with nothing a company could leak. -->
+    <record id="rule_meta_sync_stats_company" model="ir.rule">
+        <field name="name">Meta sync totals: multi-company</field>
+        <field name="model_id" ref="model_meta_sync_stats"/>
+        <field name="domain_force">[('company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <!-- Removed leads follow the company of the lead or its Page, else of
+         the Page its sync log or webhook event names. Records without a
+         company come from before links were kept, or from a lead nothing
+         traces to a Page, so only Settings administrators see them. -->
+    <record id="rule_meta_leadgen_tombstone_company" model="ir.rule">
+        <field name="name">Removed Meta lead: own companies</field>
+        <field name="model_id" ref="model_meta_leadgen_tombstone"/>
+        <field name="groups" eval="[(4, ref('group_meta_admin'))]"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="rule_meta_leadgen_tombstone_unlinked" model="ir.rule">
+        <field name="name">Removed Meta lead: records without a company</field>
+        <field name="model_id" ref="model_meta_leadgen_tombstone"/>
+        <field name="groups" eval="[(4, ref('base.group_system'))]"/>
+        <field name="domain_force">[('company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <!-- Rows without a company are seen by every company, so only
+         privileged code may create, change or delete them. -->
+    <record id="rule_meta_sync_log_company_change" model="ir.rule">
+        <field name="name">Meta sync log: change own companies only</field>
+        <field name="model_id" ref="model_meta_sync_log"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="False"/>
+    </record>
+    <record id="rule_meta_webhook_event_company_change" model="ir.rule">
+        <field name="name">Meta webhook event: change own companies only</field>
+        <field name="model_id" ref="model_meta_webhook_event"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="perm_read" eval="False"/>
+    </record>
+
+    <!-- Answers follow their lead. These four copy crm's stock lead rules
+         (company, own documents, all leads) through lead_id, since a rule
+         domain can't ask whether the lead itself is readable. They do not
+         follow other rules a module adds to crm.lead: such a module
+         must add the matching meta.lead.answer rule, with the same groups
+         and the same domain prefixed with lead_id. -->
+    <record id="rule_meta_lead_answer_company" model="ir.rule">
+        <field name="name">Meta answer: multi-company</field>
+        <field name="model_id" ref="model_meta_lead_answer"/>
+        <field name="domain_force">[('lead_id.company_id', 'in', company_ids + [False])]</field>
+    </record>
+    <!-- Own-documents salespeople see answers of their own and of
+         unassigned leads, like crm's Personal Leads rule. -->
+    <record id="rule_meta_lead_answer_personal" model="ir.rule">
+        <field name="name">Meta answer: own leads</field>
+        <field name="model_id" ref="model_meta_lead_answer"/>
+        <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman'))]"/>
+        <field name="domain_force">['|', ('lead_id.user_id', '=', user.id), ('lead_id.user_id', '=', False)]</field>
+    </record>
+    <record id="rule_meta_lead_answer_all" model="ir.rule">
+        <field name="name">Meta answer: all leads</field>
+        <field name="model_id" ref="model_meta_lead_answer"/>
+        <field name="groups" eval="[(4, ref('sales_team.group_sale_salesman_all_leads'))]"/>
+        <field name="domain_force">[(1, '=', 1)]</field>
+    </record>
+    <!-- Meta groups don't grant CRM access. Without this rule a Meta Admin
+         with no sales role matches no group rule above and would see every
+         answer of the company. Module code that writes answers runs sudo. -->
+    <record id="rule_meta_lead_answer_meta_without_sales" model="ir.rule">
+        <field name="name">Meta answer: only through a sales role</field>
+        <field name="model_id" ref="model_meta_lead_answer"/>
+        <field name="groups" eval="[(4, ref('group_meta_user'))]"/>
+        <field name="domain_force">[(0, '=', 1)]</field>
+    </record>
 </odoo>

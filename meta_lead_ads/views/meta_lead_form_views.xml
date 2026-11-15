@@ -9,13 +9,15 @@
         <field name="name">meta.lead.form.list</field>
         <field name="model">meta.lead.form</field>
         <field name="arch" type="xml">
-            <list>
+            <list decoration-info="backfill_slicing">
                 <field name="name"/>
                 <field name="form_id"/>
                 <field name="page_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
                 <field name="sync_enabled"/>
                 <field name="mapping_count"/>
                 <field name="active" column_invisible="1"/>
+                <field name="backfill_slicing" column_invisible="1"/>
             </list>
         </field>
     </record>
@@ -36,16 +38,44 @@
                         <field name="name"/>
                         <field name="form_id"/>
                         <field name="page_id"/>
+                        <field name="company_id" readonly="1"
+                               groups="base.group_multi_company"/>
                         <field name="sync_enabled"/>
                         <field name="active"/>
                         <field name="last_synced_time" readonly="1"/>
+                        <field name="backfill_slicing" readonly="1"
+                               invisible="not backfill_slicing"/>
+                        <field name="backfill_incomplete_count" readonly="1"
+                               invisible="not backfill_incomplete_count"/>
                     </group>
                     <notebook>
                         <page string="Field Mappings" name="mappings">
+                            <!-- The list below shows active rows only, so the
+                                 turned off ones are reached from here. -->
+                            <field name="disabled_mapping_count" invisible="1"/>
+                            <div class="alert alert-warning mb-2" role="alert"
+                                 invisible="not disabled_mapping_count">
+                                <field name="disabled_mapping_notice" nolabel="1"
+                                       readonly="1" class="me-1"/>
+                                <button name="action_open_disabled_mappings"
+                                        type="object" string="See disabled mappings"
+                                        class="btn-link p-0 me-1"/>
+                                <button name="action_open_page_routing"
+                                        type="object" string="Open Page routing"
+                                        class="btn-link p-0 ms-1"
+                                        groups="meta_lead_ads.group_meta_admin"/>
+                            </div>
                             <field name="mapping_ids">
                                 <list editable="bottom">
                                     <field name="meta_key"/>
-                                    <field name="crm_field_id"/>
+                                    <field name="crm_field_name" required="1"
+                                           widget="meta_target_selection"/>
+                                    <field name="crm_field_type" column_invisible="1"/>
+                                    <field name="date_format"
+                                           invisible="crm_field_type not in ('date', 'datetime')"/>
+                                    <field name="target_note" string="Note"
+                                           readonly="1" optional="show"
+                                           decoration-muted="1"/>
                                 </list>
                             </field>
                         </page>

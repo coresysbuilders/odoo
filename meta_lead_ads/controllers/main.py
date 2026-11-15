@@ -22,6 +22,8 @@ import json
 import logging
 import re
 
+from werkzeug.exceptions import RequestEntityTooLarge
+
 from odoo import http
 from odoo.http import request, Response
 
@@ -32,15 +34,27 @@ VERIFY_TOKEN_PARAM = 'meta_lead_ads.webhook_verify_token'
 # first means junk gets a plain 403; compare_digest raises TypeError on
 # non-ASCII input, which would turn into a 500 and make Meta retry.
 _SIG_HEX_RE = re.compile(r'[0-9a-f]{64}')
-# Real leadgen notifications are a few KB. Anything over this is refused
-# before we read the body, so an unsigned caller can't make us buffer it.
+# Real leadgen notifications are a few KB, so an unsigned caller must not be
+# able to make us buffer more than this. A declared Content-Length is checked
+# up front; a chunked body without one is capped by the route limit below.
 MAX_WEBHOOK_BYTES = 64 * 1024
+
+
+def _too_large():
+    # The rest of an oversized body is never read, so the socket must not be
+    # reused: its leftover bytes would be taken for the next request.
+    return Response('', status=413, headers=[('Connection', 'close')])
 
 
 class MetaWebhookController(http.Controller):
 
     @http.route('/meta_lead_ads/webhook', type='http', auth='public',
-                csrf=False, methods=['GET', 'POST'], save_session=False)
+                csrf=False, methods=['GET', 'POST'], save_session=False,
+                # One byte over the cap, so werkzeug's bounded read hands
+                # back MAX + 1 bytes and the length check below sees the
+                # overflow. With the limit at MAX an oversized chunked body
+                # would be cut short and answered 403 instead.
+                max_content_length=MAX_WEBHOOK_BYTES + 1)
     def meta_webhook(self, **kwargs):
         # save_session=False just avoids creating a session per webhook call.
         # If an Odoo build ever rejects the kwarg, drop it: the route would
@@ -78,14 +92,21 @@ class MetaWebhookController(http.Controller):
         sent_hex = header.split('=', 1)[1]
         if not _SIG_HEX_RE.fullmatch(sent_hex):
             return Response('', status=403)
+        # werkzeug already refuses a declared length over the route limit
+        # before this runs; this catches the one byte in between and stays as
+        # a backstop should the limit ever be dropped.
         content_length = request.httprequest.content_length
         if content_length is not None and content_length > MAX_WEBHOOK_BYTES:
-            return Response('', status=413)
-        # The HMAC needs the bytes exactly as sent. Re-check the length for
-        # chunked requests that declared none.
-        raw = request.httprequest.get_data()
+            return _too_large()
+        # The HMAC needs the bytes exactly as sent. A chunked body declares no
+        # length, so the route limit stops the read at MAX + 1 bytes and the
+        # length check catches it.
+        try:
+            raw = request.httprequest.get_data()
+        except RequestEntityTooLarge:
+            return _too_large()
         if len(raw) > MAX_WEBHOOK_BYTES:
-            return Response('', status=413)
+            return _too_large()
         # The public user can't read meta.account, hence the sudo. With no
         # secret configured we can't authenticate anything, so refuse.
         app_secret = request.env['meta.account'].sudo()._webhook_app_secret()

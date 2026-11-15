@@ -1,7 +1,7 @@
 <!--
     Apps-store description page for Meta Lead Ads Integration.
     &copy; 2026 CoreSys Builders. Rendered by Odoo on the module's "Module Info" /
-    "Learn More" page. Styling is INLINE only (no <style> block) so it survives
+    "Learn More" page. Styling is INLINE only (no style element) so it survives
     Odoo's description sanitizer unchanged. Relative image src values are rewritten
     by Odoo to /meta_lead_ads/static/description/<src>.
 -->
@@ -13,14 +13,14 @@
 
   <h1 style="font-size:30px;line-height:1.2;font-weight:700;color:#15191e;margin:30px 0 6px;letter-spacing:-.01em;">Meta Lead Ads, straight into Odoo CRM</h1>
   <div style="width:54px;height:3px;background:#1f4e79;border-radius:2px;margin:14px 0 18px;"></div>
-  <p style="font-size:18px;color:#444b53;margin:0 0 12px;">Facebook and Instagram leads arrive in Odoo CRM in real time, with the campaign, ad set, ad and form that produced them. No CSV exports, no middleware.</p>
+  <p style="font-size:18px;color:#444b53;margin:0 0 12px;">Facebook and Instagram leads arrive in Odoo CRM shortly after they're submitted, with the campaign, ad set, ad and form that produced them when Meta provides them. No CSV exports, no middleware.</p>
 
-  <p style="margin:12px 0;">This module connects Meta Lead Ads to your CRM through a verified webhook for real-time delivery and a scheduled backfill that re-checks every form, so a missed webhook never costs you a lead. Both paths run through a single ingestion service, so each lead is created once &mdash; never duplicated, even when Meta re-sends an event.</p>
+  <p style="margin:12px 0;">This module connects Meta Lead Ads to your CRM through a signature-verified webhook for fast delivery and a scheduled backfill that re-checks each connected form, designed so a lead a missed webhook didn't deliver is picked up on the next run, as long as Meta still holds it. Both paths run through one ingestion service, and each Meta lead ID can create only one CRM lead, so webhook, backfill and Meta re-sends don't pile up duplicates.</p>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Highlights</h2>
-  <p style="margin:14px 0;"><b>Real-time, with a safety net.</b> A signature-verified webhook captures leads the moment they're submitted; a backfill cron re-sweeps each form on a schedule. Exactly-once creation is enforced by a database constraint, not a best-effort check.</p>
-  <p style="margin:14px 0;"><b>Attribution you can act on.</b> Campaign, ad set, ad, form and page &mdash; names and IDs &mdash; are recorded on every lead and mapped to Odoo UTM, so you can see which ad produced which opportunity.</p>
-  <p style="margin:14px 0;"><b>Careful with credentials.</b> The App Secret and access tokens are restricted to administrators. The webhook checks Meta's signature over the raw request body before parsing anything, and nothing secret is ever written to the logs.</p>
+  <p style="margin:14px 0;"><b>Fast, with a safety net.</b> A signature-verified webhook hands each new lead to a queue that Odoo works through every minute; a backfill cron re-sweeps each form on a schedule. One CRM lead per Meta lead ID is enforced by a database constraint, not a best-effort check.</p>
+  <p style="margin:14px 0;"><b>Attribution you can act on.</b> The campaign, ad set, ad, form and Page names and IDs are recorded on each lead when Meta provides them, and mapped to Odoo UTM, so you can see which ad produced which opportunity. A name Meta doesn't return straight away is looked up again later.</p>
+  <p style="margin:14px 0;"><b>Careful with credentials.</b> The App Secret and access tokens are restricted to administrators. The webhook checks Meta's signature over the raw request body before parsing anything, and the module doesn't write tokens or the App Secret to its logs.</p>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">How it works</h2>
 
@@ -32,64 +32,64 @@
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">2.</span>Check the connection</h3>
-  <p style="margin:10px 0;">Each account shows its token validity, granted scopes, whether <code>leads_retrieval</code> is in place, and whether Odoo's scheduler is running your jobs &mdash; with <b>Test Connection</b> and <b>Check Scheduler</b> buttons so you can confirm it yourself.</p>
+  <p style="margin:10px 0;">Each account shows its token validity, granted scopes, whether <code>leads_retrieval</code> is in place, and whether the queue drain and the backfill are running, with <b>Test Connection</b> and <b>Check Scheduler</b> buttons so you can confirm it yourself.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/03-connection.jpg" alt="Meta account connection status" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Connection status on the account form, including a live scheduler check.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">3.</span>Read every lead in context</h3>
-  <p style="margin:10px 0;">Leads come in as ordinary <code>crm.lead</code> records you can qualify and convert. A Meta Attribution section records the platform, campaign, ad set, ad, form and page, the exact date and time the form was submitted, and the originating Meta Lead ID. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys &mdash; platform, campaign, ad set, ad, form and submission day &mdash; ready for list, pivot and graph reporting.</p>
+  <p style="margin:10px 0;">Leads come in as ordinary <code>crm.lead</code> records you can qualify and convert. A Meta Attribution section records the platform, campaign, ad set, ad, form and Page, the date and time the form was submitted when Meta provides it, and the originating Meta Lead ID. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys &mdash; platform, campaign, ad set, ad, form and submission day &mdash; ready for list, pivot and graph reporting.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/04-lead-attribution.jpg" alt="CRM lead with Meta attribution" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A lead with its full Meta attribution, alongside the standard CRM fields.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A lead with its Meta attribution, alongside the standard CRM fields.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">4.</span>Map the questions you care about</h3>
-  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to a standard or custom CRM field &mdash; text, selection, checkbox, number, amount, date, or a link to existing records such as country or tags &mdash; and reuse the same field across all your forms. Or promote an answer into a new field from the lead itself. An answer that doesn't fit its field is kept on the lead rather than guessed, so the answers you collect are never discarded.</p>
+  <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to a standard or custom CRM field &mdash; text, selection, checkbox, number, amount, date, or a link to existing records such as country or tags &mdash; and reuse the same field across all your forms. Or promote an answer into a new field from the lead itself. An answer that doesn't fit its field is kept on the lead rather than guessed.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/05-field-mapping.jpg" alt="Mapping Meta form questions to CRM fields" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Field mappings link a form question to the CRM field it should fill.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">5.</span>See what's converting</h3>
-  <p style="margin:10px 0;">A read-only dashboard shows leads over time, lead-to-opportunity and win rates, a breakdown by campaign, and a ranking of your best performers, with health indicators for the webhook, scheduler and token.</p>
+  <p style="margin:10px 0;">A read-only dashboard shows leads over time, lead-to-opportunity and win rates (leads created directly as opportunities are shown as a separate count), a breakdown by campaign, and a ranking of your best performers, with separate health indicators for the webhook, the queue drain, the backfill and the token. Lead counts follow the date each form was submitted on Meta, and campaigns are grouped by their Meta ID, so two campaigns with the same name stay apart.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/01-dashboard.jpg" alt="Leads analytics dashboard" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
     <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The analytics dashboard &mdash; volume, conversion and campaign performance.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">6.</span>Keep an audit trail</h3>
-  <p style="margin:10px 0;">Every attempt &mdash; webhook, cron or manual &mdash; is logged with its status, trigger and the dedup key that matched. If something fails, select the row and retry; the same ingestion service re-fetches it from Meta.</p>
+  <p style="margin:10px 0;">Each ingestion attempt (webhook, backfill or manual) is logged with its status, trigger and the dedup key that matched. When a lead fails, fix the cause if there is one, then select the row and press Retry; the same ingestion service processes it again.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/06-sync-logs.jpg" alt="Sync logs audit trail" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Sync logs record each ingestion attempt and support a one-click retry.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Sync logs record each ingestion attempt, and a failed lead can be retried from its row.</figcaption>
   </figure>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Details</h2>
   <div style="display:flex;flex-wrap:wrap;gap:34px;">
     <div style="flex:1 1 300px;min-width:0;">
-      <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">Captured on every lead</h3>
+      <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">Stored on each Meta lead</h3>
       <ul style="margin:10px 0;padding-left:20px;">
         <li style="padding:3px 0;">Contact name, email and phone (with normalized-phone dedup)</li>
         <li style="padding:3px 0;">Platform &mdash; Facebook or Instagram</li>
-        <li style="padding:3px 0;">Campaign, ad set and ad &mdash; names and IDs</li>
-        <li style="padding:3px 0;">The date and time the form was submitted</li>
+        <li style="padding:3px 0;">Campaign, ad set and ad names and IDs, when Meta provides them</li>
+        <li style="padding:3px 0;">The date and time the form was submitted, when Meta provides it</li>
         <li style="padding:3px 0;">Lead form and Page &mdash; names, IDs and linked records</li>
         <li style="padding:3px 0;">Meta Lead ID and the originating account</li>
         <li style="padding:3px 0;">All custom form answers, stored in full</li>
       </ul>
     </div>
     <div style="flex:1 1 300px;min-width:0;">
-      <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">How it stays correct</h3>
+      <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:22px 0 4px;">Built-in safeguards</h3>
       <ul style="margin:10px 0;padding-left:20px;">
-        <li style="padding:3px 0;">Exactly-once creation via a database UNIQUE constraint</li>
+        <li style="padding:3px 0;">One CRM lead per Meta lead ID, enforced by a database UNIQUE constraint</li>
         <li style="padding:3px 0;">Two-layer dedup: Meta Lead ID, then email and phone &mdash; a merged lead keeps its own data and gains the Meta attribution</li>
-        <li style="padding:3px 0;">Typed field mapping that never guesses &mdash; unconvertible answers are kept</li>
+        <li style="padding:3px 0;">Typed field mapping that doesn't guess: an answer that doesn't fit is kept on the lead</li>
         <li style="padding:3px 0;">HMAC-SHA256 verification on the raw webhook body</li>
         <li style="padding:3px 0;">Tokens and App Secret restricted to administrators</li>
         <li style="padding:3px 0;">Get-or-create UTM mapping &mdash; no duplicate UTM records</li>
-        <li style="padding:3px 0;">Token-health alerts and a scheduler self-check</li>
+        <li style="padding:3px 0;">Token-health alerts and separate checks for the webhook, queue drain and backfill</li>
       </ul>
     </div>
   </div>
@@ -112,28 +112,53 @@
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Does it capture production leads from both Facebook and Instagram Lead Ads?</summary>
     <div style="padding:0 16px 6px;">
-      <p style="margin:0 0 12px;">Yes. Lead ads running on Facebook and on Instagram (feed, stories, reels and other placements) are captured. Instagram lead ads use the instant form of the Facebook Page they are published from, so they arrive through that Page's connection, and each lead records whether it came from Facebook or Instagram.</p>
+      <p style="margin:0 0 12px;">Yes. Lead ads on Facebook and on Instagram use instant forms, and the module reads leads from those forms through the Page's connection, so the placement an ad runs in (feed, stories, reels or another) doesn't change how its leads are fetched. Instagram lead ads use the instant form of the Facebook Page they are published from, and each lead records whether it came from Facebook or Instagram when Meta reports the platform.</p>
       <p style="margin:0 0 12px;">For production, your Meta app needs Advanced Access for <code>leads_retrieval</code> (plus <code>pages_show_list</code>, <code>pages_manage_metadata</code> and <code>pages_read_engagement</code>) and Business Verification; until then Meta only delivers test leads. Each Instagram account must be linked to a Facebook Page connected in the module.</p>
     </div>
   </details>
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">How quickly does a new lead appear in Odoo CRM?</summary>
     <div style="padding:0 16px 6px;">
-      <p style="margin:0 0 12px;">Typically within 1&ndash;2 minutes with the standard configuration. Meta notifies Odoo through a webhook the moment a form is submitted, and a scheduled job turns new submissions into CRM leads every minute. As a safety net, a backfill job re-checks every form every 15 minutes (adjustable), so a missed notification still arrives.</p>
+      <p style="margin:0 0 12px;">Usually within a few minutes, once the webhook and Odoo's scheduled jobs are running. Meta notifies Odoo through a webhook when a form is submitted, and a scheduled job turns new submissions into CRM leads every minute. As a safety net, a backfill job re-checks each connected form every 15 minutes (adjustable) and a daily wider sweep looks for leads Meta made visible late, so a lead a missed notification didn't deliver is picked up on a later run, as long as Meta still holds it.</p>
       <p style="margin:0 0 12px;">This needs a publicly reachable HTTPS URL for your Odoo and Odoo's scheduled jobs running, which is standard on Odoo.sh and correctly configured on-premise servers.</p>
     </div>
   </details>
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can form answers be mapped to standard and custom CRM fields?</summary>
     <div style="padding:0 16px 6px;">
-      <p style="margin:0 0 12px;">Yes. Name, email, phone and company name are filled in automatically. Any other question can be mapped, per form, to a standard or custom lead field: text, selection, checkbox, number, amount, date, or a link to existing records such as a country (by name or ISO code) or tags. The same field can be filled from several forms, and any captured question can be turned into a new custom field in one click from the lead.</p>
-      <p style="margin:0 0 12px;">An answer that doesn't fit its field, such as an unknown option, is kept on the lead as a Meta answer rather than guessed, so nothing is lost.</p>
+      <p style="margin:0 0 12px;">Yes. Name, email, phone and company name are filled in automatically. Any other question can be mapped, per form, to a standard or custom lead field: text, selection, checkbox, number, amount, date, or a link to existing records such as a country (by name or ISO code) or tags. The same field can be filled from several forms, and any captured question can be turned into a new custom field from the lead.</p>
+      <p style="margin:0 0 12px;">An answer that doesn't fit its field, such as an unknown option, is kept on the lead as a Meta answer rather than guessed.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can every failed lead be fixed with Retry?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Not always. Retry runs the lead through the same ingestion again, from the copy Odoo stored or, once that copy has expired, by fetching it from Meta. That clears temporary problems such as a timeout, a rate limit (the retry waits as long as Meta asks), or a token that has since been renewed. Other failures need a fix first, for example a missing permission or a Page the token can no longer read. A lead Meta no longer returns can't be fetched again once its stored copy has expired, and a lead whose personal data was erased can't be retried. The Sync Log shows the error on each row, so you can fix the cause and then retry.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can it bring in leads older than 90 days?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">No. Meta keeps lead data for about 90 days, so the backfill and the daily wider sweep can only fetch leads Meta still holds. A newly connected form's first sync looks back 30 days by default (adjustable). If a form's listing from Meta comes back incomplete, that form keeps its position instead of skipping ahead, and after a few incomplete runs in a row it is flagged in the Sync Log.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Can one database use more than one Meta app?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">No. A database connects to one Meta app, because Odoo checks each webhook call with that app's App Secret. You can connect several Pages and lead forms through it. A different App ID is refused while accounts of the current app are active.</p>
+    </div>
+  </details>
+  <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
+    <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">What happens to promoted fields if I uninstall the module?</summary>
+    <div style="padding:0 16px 6px;">
+      <p style="margin:0 0 12px;">Uninstalling removes promoted fields and their values; export them first. The fields affected are the ones the module created when you promoted an answer, plus any custom field whose technical name starts with <code>x_meta_</code> and that a Meta field mapping fills.</p>
+      <p style="margin:0 0 12px;">The Meta details on each lead (campaign, ad set, ad and form IDs and names, submission time, stored Meta answers) and the module's sync logs and settings are removed too, and the Instagram source and Paid Social medium it added are deleted, which leaves leads that used them with an empty Source and Medium. Leads themselves stay in CRM. Other custom fields are kept, except a custom field that is computed from, related to, or the one2many inverse of a promoted field: Odoo removes that field and its values together with the promoted field, so export it too. A promoted field that another module, such as Studio, also owns is kept. If you customized a view to show a promoted field, check that view afterwards: Odoo removes the field but can leave the view pointing at it, so edit the view to take the field out.</p>
     </div>
   </details>
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">
     <summary style="cursor:pointer;padding:12px 16px;font-size:16.5px;font-weight:600;color:#1b2027;">Are campaign, ad set, ad, form and submission time stored for reporting?</summary>
     <div style="padding:0 16px 6px;">
-      <p style="margin:0 0 12px;">Yes. Every lead stores the campaign, ad set, ad, form and Page names and IDs, the platform, and the exact date and time of submission. The campaign is also mapped to Odoo's standard UTM source, medium and campaign. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys (platform, campaign, ad set, ad, form, submission day) for list, pivot and graph reports, alongside the built-in analytics dashboard.</p>
+      <p style="margin:0 0 12px;">Yes. Each Meta lead stores the campaign, ad set, ad, form and Page names and IDs, the platform, and the date and time of submission, when Meta provides them. The campaign is also mapped to Odoo's standard UTM source, medium and campaign. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys (platform, campaign, ad set, ad, form, submission day) for list, pivot and graph reports, alongside the built-in analytics dashboard.</p>
     </div>
   </details>
   <details style="border:1px solid #e3e6ea;border-radius:4px;margin:0 0 10px;background:#ffffff;">

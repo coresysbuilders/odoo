@@ -14,8 +14,10 @@ stays False.
 import logging
 import re
 
-from odoo import SUPERUSER_ID, api
+from odoo.tools import SQL
+
 from odoo.addons.meta_lead_ads.models.const import DEFAULT_LEAD_NAME
+from odoo.addons.meta_lead_ads.models.migration_utils import iter_id_batches
 
 _logger = logging.getLogger(__name__)
 
@@ -33,14 +35,24 @@ def _default_skeleton_re():
 
 
 def migrate(cr, version):
-    env = api.Environment(cr, SUPERUSER_ID, {})
     skeleton = _default_skeleton_re()
-    leads = env['crm.lead'].search([('meta_leadgen_id', '!=', False),
-                                    ('meta_name_is_generated', '=', False)])
-    to_flag = leads.filtered(lambda lead: skeleton.match(lead.name or ''))
-    if to_flag:
-        # No 'name' in vals, so the write override leaves the flag alone.
-        to_flag.write({'meta_name_is_generated': True})
+    visited = flagged = 0
+    # Archived leads are left out, as the original ORM search did.
+    for ids in iter_id_batches(cr, 'crm_lead', SQL(
+            "meta_leadgen_id IS NOT NULL AND active IS TRUE "
+            "AND meta_name_is_generated IS NOT TRUE")):
+        visited += len(ids)
+        cr.execute("SELECT id, name FROM crm_lead WHERE id = ANY(%s)", (ids,))
+        to_flag = [lead_id for lead_id, name in cr.fetchall()
+                   if skeleton.match(name or '')]
+        if to_flag:
+            # Plain SQL skips the crm.lead write override, which only
+            # matters when the name is written.
+            cr.execute("""
+                UPDATE crm_lead SET meta_name_is_generated = TRUE
+                 WHERE id = ANY(%s) AND meta_name_is_generated IS NOT TRUE
+            """, (to_flag,))
+            flagged += cr.rowcount
     _logger.info(
         "meta_lead_ads: backfilled meta_name_is_generated on %s of %s "
-        "pre-existing Meta lead(s).", len(to_flag), len(leads))
+        "pre-existing Meta lead(s).", flagged, visited)

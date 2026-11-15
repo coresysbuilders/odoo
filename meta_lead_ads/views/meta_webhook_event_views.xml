@@ -12,12 +12,24 @@
     <field name="model">meta.webhook.event</field>
     <field name="arch" type="xml">
       <list>
+        <header>
+          <!-- The action skips rows already erased and refuses rows of a
+               lead that still exists. -->
+          <button name="action_erase_personal_data" type="object"
+                  string="Erase Personal Data"
+                  groups="meta_lead_ads.group_meta_admin"
+                  confirm="Erase the stored Meta data of this Meta lead? Its payload is removed from every sync and webhook row, the lead can't be retried, and the automatic syncs won't bring it back. At most 200 rows at a time. This can't be undone."/>
+        </header>
         <field name="create_date"/>
         <field name="leadgen_id"/>
         <field name="page_id"/>
         <field name="form_id"/>
         <field name="status"/>
+        <field name="payload_cleared" optional="show" widget="badge"/>
+        <field name="company_id" groups="base.group_multi_company"/>
         <field name="attempts"/>
+        <field name="next_attempt_at" optional="show"/>
+        <field name="error_message" optional="hide"/>
       </list>
     </field>
   </record>
@@ -27,14 +39,37 @@
     <field name="model">meta.webhook.event</field>
     <field name="arch" type="xml">
       <form>
+        <header>
+          <!-- Other users can read the queue but not write it, so hide a
+               button that would only fail for them. action_retry does its
+               own check. -->
+          <button name="action_retry" string="Retry" type="object"
+                  class="btn-primary"
+                  invisible="status == 'done' or (status == 'pending' and not next_attempt_at) or payload_cleared == 'erased'"
+                  groups="meta_lead_ads.group_meta_admin"/>
+          <!-- Only for events that never became a lead: a lead's data is
+               erased from the lead itself. -->
+          <button name="action_erase_personal_data" type="object"
+                  string="Erase Personal Data"
+                  invisible="payload_cleared == 'erased' or lead_id or not leadgen_id"
+                  groups="meta_lead_ads.group_meta_admin"
+                  confirm="Erase the stored Meta data of this Meta lead? Its payload is removed from every sync and webhook row, the lead can't be retried, and the automatic syncs won't bring it back. At most 200 rows at a time. This can't be undone."/>
+        </header>
         <sheet>
           <group>
             <field name="leadgen_id" readonly="1"/>
             <field name="page_id" readonly="1"/>
             <field name="form_id" readonly="1"/>
             <field name="status" readonly="1"/>
+            <field name="payload_cleared" readonly="1"
+                   invisible="not payload_cleared"/>
             <field name="attempts" readonly="1"/>
+            <field name="next_attempt_at" readonly="1"/>
             <field name="lead_id" readonly="1"/>
+            <field name="company_id" readonly="1"
+                   groups="base.group_multi_company"/>
+            <field name="page_company_id" readonly="1"
+                   groups="base.group_multi_company"/>
             <field name="error_message" readonly="1"/>
           </group>
           <group string="Raw Payload (admin only)" groups="meta_lead_ads.group_meta_admin">
@@ -43,6 +78,18 @@
         </sheet>
       </form>
     </field>
+  </record>
+
+  <!-- "Retry Selected" in the list Action menu. Same action_retry as the form
+       button; limited to Meta admins for the same reason. -->
+  <record id="action_meta_webhook_event_retry_server" model="ir.actions.server">
+    <field name="name">Retry Selected</field>
+    <field name="model_id" ref="model_meta_webhook_event"/>
+    <field name="binding_model_id" ref="model_meta_webhook_event"/>
+    <field name="binding_view_types">list</field>
+    <field name="groups_id" eval="[Command.link(ref('meta_lead_ads.group_meta_admin'))]"/>
+    <field name="state">code</field>
+    <field name="code">action = records.action_retry()</field>
   </record>
 
   <record id="meta_webhook_event_action" model="ir.actions.act_window">

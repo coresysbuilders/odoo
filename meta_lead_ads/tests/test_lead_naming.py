@@ -33,8 +33,8 @@ class TestLeadNameRender(TransactionCase):
     def setUp(self):
         super().setUp()
         self.Ingest = self.env['meta.lead.ingest']
-        # set_values checks group_meta_admin itself, and the test superuser
-        # isn't in that group, so use a dedicated Meta admin.
+        # Save as a Meta admin without Settings rights: their Save runs only
+        # the Meta part of the save, which checks group_meta_admin itself.
         base_internal = self.env.ref('base.group_user')
         admin_group = self.env.ref('meta_lead_ads.group_meta_admin')
         self.meta_admin = self.env['res.users'].create({
@@ -107,7 +107,7 @@ class TestLeadNameRender(TransactionCase):
         back through get_values."""
         Settings = self.env['res.config.settings'].with_user(self.meta_admin)
         s = Settings.create({'lead_name_template': "X {form_name}"})
-        s.set_values()
+        s.execute()
         param = self.env['ir.config_parameter'].sudo().get_param(LEAD_NAME_PARAM)
         self.assertEqual(param, "X {form_name}")
         self.assertEqual(
@@ -116,11 +116,11 @@ class TestLeadNameRender(TransactionCase):
     # ---- unknown and malformed tokens ----------------------------------------
 
     def test_unknown_token_rejected(self):
-        """An unknown token is rejected by set_values before anything is saved."""
+        """An unknown token is rejected on Save before anything is saved."""
         s = self.env['res.config.settings'].with_user(self.meta_admin).create(
             {'lead_name_template': "Meta {foo} Lead"})
         with self.assertRaises(ValidationError):
-            s.set_values()
+            s.execute()
 
     def test_malformed_brace_rejected(self):
         """Malformed braces are rejected; doubled braces are an escaped literal.

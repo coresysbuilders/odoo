@@ -81,6 +81,7 @@
                 <div class="o_meta_dash_kpis">
                     <div class="o_meta_kpi">
                         <div class="o_meta_kpi_label">New leads</div>
+                        <div class="o_meta_kpi_basis">By Meta submission date</div>
                         <div class="o_meta_kpi_value" t-esc="state.data.kpis.new"/>
                         <t t-if="state.data.deltas.new !== null and state.data.deltas.new !== undefined">
                             <div t-att-class="'o_meta_kpi_delta ' + deltaClass(state.data.deltas.new)">
@@ -91,6 +92,7 @@
                     </div>
                     <div class="o_meta_kpi">
                         <div class="o_meta_kpi_label">Synced</div>
+                        <div class="o_meta_kpi_basis">By date processed in Odoo</div>
                         <div class="o_meta_kpi_value" t-esc="state.data.kpis.synced"/>
                         <t t-if="state.data.deltas.synced !== null and state.data.deltas.synced !== undefined">
                             <div t-att-class="'o_meta_kpi_delta ' + deltaClass(state.data.deltas.synced)">
@@ -101,6 +103,7 @@
                     </div>
                     <div class="o_meta_kpi">
                         <div class="o_meta_kpi_label">Failed</div>
+                        <div class="o_meta_kpi_basis">Unresolved, by date processed in Odoo</div>
                         <div class="o_meta_kpi_value" t-esc="state.data.kpis.failed"/>
                         <t t-if="state.data.deltas.failed !== null and state.data.deltas.failed !== undefined">
                             <div t-att-class="'o_meta_kpi_delta ' + deltaClass(state.data.deltas.failed)">
@@ -123,7 +126,7 @@
                                 </t>
                                 <t t-else="">
                                     <h3>No Meta leads in this period</h3>
-                                    <p>No Meta leads arrived between
+                                    <p>No Meta leads were submitted between
                                         <t t-esc="state.data.window.from"/> and <t t-esc="state.data.window.to"/>. Try a wider period, or check the Sync Log for ingestion errors.</p>
                                 </t>
                             </div>
@@ -135,13 +138,18 @@
                     <div class="o_meta_card o_meta_card_conversion">
                         <h2 class="o_meta_card_title">Conversion</h2>
                         <div class="o_meta_conv_metric">
-                            <span class="o_meta_conv_label">Converted to opportunity</span>
-                            <span class="o_meta_conv_value">· <t t-esc="formatPercent(state.data.conversion.opportunity_rate)"/></span>
+                            <span class="o_meta_conv_label">Converted from lead</span>
+                            <span class="o_meta_conv_value">· <t t-esc="formatRate(state.data.conversion.converted_rate)"/></span>
                         </div>
+                        <div class="o_meta_kpi_basis mb-2"
+                             t-if="state.data.conversion.converted_rate === null">No leads to convert in this period</div>
+                        <div class="o_meta_kpi_basis mb-2">Created as opportunity · <t t-esc="state.data.conversion.created_as_opportunity"/></div>
                         <div class="o_meta_conv_metric">
                             <span class="o_meta_conv_label">Won rate</span>
-                            <span class="o_meta_conv_value">· <t t-esc="formatPercent(state.data.conversion.won_rate)"/></span>
+                            <span class="o_meta_conv_value">· <t t-esc="formatRate(state.data.conversion.won_rate)"/></span>
                         </div>
+                        <div class="o_meta_kpi_basis mb-2"
+                             t-if="state.data.conversion.won_rate === null">No opportunities in this period</div>
                     </div>
                 </div>
 
@@ -166,14 +174,14 @@
                                     t-att-disabled="state.loading ? 'disabled' : false"
                                     t-on-click="() => this.setDrilldown('adsets')">Top ad sets</button>
                         </div>
-                        <t t-if="!drilldownRows.length">
+                        <t t-if="!donutRows.length">
                             <div class="o_meta_dash_empty">
                                 <h3>No Meta leads in this period</h3>
-                                <p>No Meta leads arrived between
+                                <p>No Meta leads were submitted between
                                     <t t-esc="state.data.window.from"/> and <t t-esc="state.data.window.to"/>. Try a wider period, or check the Sync Log for ingestion errors.</p>
                             </div>
                         </t>
-                        <div class="o_meta_chart_wrap o_meta_donut_wrap" t-att-class="!drilldownRows.length ? 'd-none' : ''">
+                        <div class="o_meta_chart_wrap o_meta_donut_wrap" t-att-class="!donutRows.length ? 'd-none' : ''">
                             <canvas t-ref="donutCanvas" aria-label="Top campaigns donut chart"/>
                         </div>
                     </div>
@@ -184,22 +192,22 @@
                                 <tr>
                                     <th>Name</th>
                                     <th>Leads</th>
-                                    <th>Opp. rate</th>
+                                    <th>Converted</th>
                                     <th>Won rate</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <t t-foreach="drilldownRows" t-as="row" t-key="state.drilldown + '/' + row.name">
+                                <t t-foreach="drilldownRows" t-as="row" t-key="state.drilldown + '/' + row_index">
                                     <tr>
                                         <td t-esc="row.name"/>
                                         <td t-esc="row.count"/>
-                                        <td t-esc="formatPercent(row.opportunity_rate)"/>
-                                        <td t-esc="formatPercent(row.won_rate)"/>
+                                        <td t-esc="formatRate(row.converted_rate)"/>
+                                        <td t-esc="formatRate(row.won_rate)"/>
                                     </tr>
                                 </t>
                             </tbody>
                         </table>
-                        <p class="o_meta_rank_footnote">Campaigns with fewer than 10 leads are excluded from the conversion ranking.</p>
+                        <p class="o_meta_rank_footnote">Campaigns with fewer than 10 leads are excluded from the conversion ranking. Campaigns, ad sets and ads are grouped by Meta ID and shown under their latest name. A dash means there was nothing to measure in that row: no leads to convert, or no opportunities to win.</p>
                     </div>
                 </div>
 
@@ -235,15 +243,23 @@
                             <span class="o_meta_health_caption" t-esc="state.data.health.webhook.caption"/>
                         </div>
                         <div class="o_meta_health_signal">
-                            <span class="o_meta_health_name">Scheduler</span>
-                            <span t-att-class="'o_meta_pill ' + statusPillClass(state.data.health.scheduler.status)" t-esc="state.data.health.scheduler.label"/>
-                            <span class="o_meta_health_caption" t-esc="state.data.health.scheduler.caption"/>
+                            <span class="o_meta_health_name">Queue drain</span>
+                            <span t-att-class="'o_meta_pill ' + statusPillClass(state.data.health.drain.status)" t-esc="state.data.health.drain.label"/>
+                            <span class="o_meta_health_caption" t-esc="state.data.health.drain.caption"/>
+                        </div>
+                        <div class="o_meta_health_signal">
+                            <span class="o_meta_health_name">Backfill</span>
+                            <span t-att-class="'o_meta_pill ' + statusPillClass(state.data.health.backfill.status)" t-esc="state.data.health.backfill.label"/>
+                            <span class="o_meta_health_caption" t-esc="state.data.health.backfill.caption"/>
                         </div>
                         <div class="o_meta_health_signal">
                             <span class="o_meta_health_name">Token</span>
                             <span t-att-class="'o_meta_pill ' + statusPillClass(state.data.health.token.status)" t-esc="state.data.health.token.label"/>
                             <span class="o_meta_health_caption" t-esc="state.data.health.token.caption"/>
                         </div>
+                        <!-- Neither grey state is a fault, so say what each one means. -->
+                        <p class="o_meta_rank_footnote" t-if="state.data.health.webhook.status === 'quiet'">Quiet means Odoo hasn't processed a webhook lead in the last 24 hours. That is normal on a low-traffic form, but rejected calls from Meta (for example after an App Secret change) and a turned-off subscription look the same, so check the Webhooks page of your Meta app if you expect leads.</p>
+                        <p class="o_meta_rank_footnote" t-if="state.data.health.webhook.status === 'no_activity'">No successful webhook lead is recorded yet. If you expect leads, check that the Page is subscribed and that the Webhook URL is reachable from the internet over HTTPS.</p>
                     </div>
                 </div>
 

@@ -29,6 +29,8 @@ from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.meta_lead_ads.models.exceptions import (
     MetaTransientError, MetaAuthError)
+from odoo.addons.meta_lead_ads.models.meta_sync_log import (
+    _PAGE_ARCHIVED_MESSAGE)
 
 # Statuses the reconcile step treats as the fresh outcome row. The idempotent
 # path logs 'skipped_idempotent'; 'skipped_duplicate' is not one of them.
@@ -137,6 +139,31 @@ class TestMetaSyncRetry(SyncRetryFixtureMixin, TransactionCase):
             self.Log.search_count([('meta_leadgen_id', '=', 'LG1')]), 1)
         survivor = self.Log.search([('meta_leadgen_id', '=', 'LG1')], limit=1)
         self.assertEqual(survivor.trigger, 'manual')
+
+    def test_retry_keeps_match_candidates(self):
+        """A retry that ends in a multi-match keeps the candidate record."""
+        row = self._failed_row(leadgen_id='LGMC', raw=None)
+        lead = self._lead(leadgen_id='LGMC')
+
+        def _side(self_ingest, page, leadgen_id, trigger='webhook', raw=None):
+            self_ingest.env['meta.sync.log']._record(
+                leadgen_id, 'manual', 'success', lead=lead, match_key='email',
+                raw=raw, candidates=7, truncated=True,
+                other_ids='11 (email), 12 (phone), and more (50+ matches)')
+            return lead
+
+        with mock.patch.object(type(self.Ingest), 'ingest_leadgen',
+                               autospec=True, side_effect=_side):
+            row.action_retry()
+        row.invalidate_recordset()
+        self.assertEqual(row.status, 'success')
+        self.assertEqual(row.match_key, 'email')
+        self.assertEqual(row.match_candidates, 7)
+        self.assertTrue(row.match_candidates_truncated)
+        self.assertEqual(row.match_other_ids,
+                         '11 (email), 12 (phone), and more (50+ matches)')
+        self.assertEqual(
+            self.Log.search_count([('meta_leadgen_id', '=', 'LGMC')]), 1)
 
     def test_manual_refetch_success(self):
         """With no stored payload, retry re-fetches from Graph (raw=None) and succeeds."""
@@ -355,28 +382,30 @@ class TestMetaSyncRetry(SyncRetryFixtureMixin, TransactionCase):
 
     # -- lock contention ----------------------------------------------------- #
     def test_lock_loser_fast_fails(self):
-        """A row that can't get its NOWAIT lock is not counted and gets an 'already being retried' error.
+        """A row that can't get its NOWAIT lock is left untouched and reported as busy.
 
         The held lock is simulated by making cursor.execute raise
-        LockNotAvailable on the FOR UPDATE NOWAIT query. The error write only
-        works if the lock failure was contained in its own savepoint.
+        LockNotAvailable on the FOR UPDATE NOWAIT queries. Nothing is written
+        to the row: with a real lock held elsewhere, that write would wait
+        for the holder. The notification still has to come back, so the lock
+        failure must be contained in its own savepoint.
         """
         import psycopg2.errors
         row = self._failed_row(leadgen_id='LG14', raw=None)
-        before = row.retry_count
+        before = (row.retry_count, row.error_message)
         real_execute = self.env.cr.execute
 
-        def _exec(query, params=None):
+        def _exec(query, params=None, *args, **kwargs):
             q = query if isinstance(query, str) else str(query)
             if 'FOR UPDATE' in q and 'NOWAIT' in q:
                 raise psycopg2.errors.LockNotAvailable('row is locked')
-            return real_execute(query, params)
+            return real_execute(query, params, *args, **kwargs)
 
         with mock.patch.object(self.env.cr, 'execute', side_effect=_exec):
-            row.action_retry()
+            result = row.action_retry()
         row.invalidate_recordset()
-        self.assertEqual(row.retry_count, before)
-        self.assertIn('already', (row.error_message or '').lower())
+        self.assertEqual((row.retry_count, row.error_message), before)
+        self.assertIn('already being retried', result['params']['message'])
 
     # -- guard --------------------------------------------------------------- #
     def test_retry_guard_non_failed(self):
@@ -385,3 +414,60 @@ class TestMetaSyncRetry(SyncRetryFixtureMixin, TransactionCase):
             'meta_leadgen_id': 'LG15', 'status': 'success', 'trigger': 'manual'})
         with self.assertRaises(UserError):
             ok.action_retry()
+
+    # -- archived Page ------------------------------------------------------- #
+    def _archive_page(self):
+        self.page.sudo().write({'active': False})
+
+    def _backfill_triggers(self):
+        cron = self.env.ref('meta_lead_ads.cron_meta_backfill')
+        return self.env['ir.cron.trigger'].sudo().search_count(
+            [('cron_id', '=', cron.id)])
+
+    def test_retry_refused_while_page_archived(self):
+        """No call to Meta, no attempt counted; the row says to reactivate."""
+        row = self._failed_row(leadgen_id='LGR1')
+        self._archive_page()
+        with mock.patch.object(self.IngestClass, 'ingest_leadgen',
+                               autospec=True) as m:
+            result = row.action_retry()
+        row.invalidate_recordset()
+        self.assertEqual(m.call_count, 0)
+        self.assertEqual(row.status, 'failed')
+        self.assertEqual(row.retry_count, 0)
+        self.assertEqual(row.error_message, _PAGE_ARCHIVED_MESSAGE)
+        message = result['params']['message']
+        self.assertIn('0 succeeded, 1 still failed', message)
+        self.assertIn('belong to an archived Page; reactivate the Page, then '
+                      'retry.', message)
+        self.assertEqual(result['params']['type'], 'warning')
+
+    def test_retry_of_removed_lead_on_archived_page_settles(self):
+        """A lead deleted in Odoo is still skipped as removed."""
+        row = self._failed_row(leadgen_id='LGR2')
+        self.env['meta.leadgen.tombstone'].sudo()._remember(['LGR2'])
+        self._archive_page()
+        with mock.patch.object(self.IngestClass, 'ingest_leadgen',
+                               autospec=True) as m:
+            row.action_retry()
+        self.env.invalidate_all()
+        self.assertEqual(m.call_count, 0)
+        self.assertEqual(row.status, 'skipped_removed')
+
+    def test_form_row_of_archived_page_schedules_nothing(self):
+        """A whole-form row of an archived Page asks for no backfill."""
+        row = self.Log.create({
+            'status': 'failed', 'trigger': 'cron',
+            'error_message': 'listing gone', 'form_id': self.form.id,
+        })
+        self._archive_page()
+        before = self._backfill_triggers()
+        with mock.patch.object(self.IngestClass, 'ingest_leadgen',
+                               autospec=True) as m:
+            row.action_retry()
+        row.invalidate_recordset()
+        self.assertEqual(m.call_count, 0)
+        self.assertEqual(row.status, 'failed')
+        self.assertEqual(row.retry_count, 0)
+        self.assertEqual(row.error_message, _PAGE_ARCHIVED_MESSAGE)
+        self.assertEqual(self._backfill_triggers(), before)
