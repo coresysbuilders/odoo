@@ -34,7 +34,7 @@
   <p style="margin:10px 0;">Under <b>Settings &rarr; Meta Lead Ads</b>, the Connect wizard takes your App ID, App Secret and access token, validates them, and discovers your Pages and lead forms. On a database with several companies, you also pick the company that receives the connection's leads. Accounts, field mappings, sync logs, lead naming, notifications and data retention all live in one place, and Meta Admins without access to Settings find the same section under <b>Meta Leads &rarr; Settings</b>.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/02-settings.jpg" alt="Meta Lead Ads settings in Odoo" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The settings page &mdash; connect an account, then manage accounts, mappings and logs from here.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The settings page &mdash; connect an account and open the setup guide, then manage accounts, mappings, logs, lead naming, notifications and data retention from here.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">2.</span>Check the connection</h3>
@@ -46,26 +46,30 @@
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">3.</span>Route each Page</h3>
   <p style="margin:10px 0;">Each Page has its own <b>Lead Routing</b>: create its new leads as leads or as opportunities, and give them a default salesperson and sales team. On a database with several companies, a <b>Company Override</b> sends one Page's leads to a different company from its account's. The salesperson must have Sales rights in the company the leads go to, and if a default stops fitting later, for example because the user was archived, the Page shows a warning that says what is wrong. When a submission matches an existing open lead, that lead only gets the salesperson and team if it has none.</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/07-page-routing.jpg" alt="Lead Routing on a Meta Page" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A Page whose leads go to another company through a Company Override, created as opportunities with a default salesperson and sales team.</figcaption>
+  </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">4.</span>Read every lead in context</h3>
   <p style="margin:10px 0;">Leads come in as ordinary <code>crm.lead</code> records you can qualify and convert. A Meta Attribution section records the platform, campaign, ad set, ad, form and Page, the date and time the form was submitted when Meta provides it, and the originating Meta Lead ID. The Leads, Pipeline and Pipeline Analysis views gain Meta filters and group-bys &mdash; platform, campaign, ad set, ad, form and submission day &mdash; ready for list, pivot and graph reporting.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/04-lead-attribution.jpg" alt="CRM lead with Meta attribution" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A lead with its Meta attribution, alongside the standard CRM fields.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">A Meta lead converted to an opportunity, with its attribution and submission time alongside the standard CRM fields.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">5.</span>Map the questions you care about</h3>
   <p style="margin:10px 0;">Custom form questions are stored on every lead. Map a question to a standard or custom CRM field &mdash; text, selection, checkbox, number, amount, date, or a link to existing records such as country or tags &mdash; and reuse the same field across all your forms. Or promote an answer into a new field from the lead itself. An answer that doesn't fit its field is kept on the lead rather than guessed. Dates are read as ISO dates or in the date format set on the mapping (DD/MM/YYYY unless you change it). Workflow fields such as the salesperson, sales team, stage and expected revenue can't be mapped.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/05-field-mapping.jpg" alt="Mapping Meta form questions to CRM fields" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Field mappings link a form question to the CRM field it should fill.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Field mappings link a form question to the CRM field it should fill, with the field type and, for dates, the date format.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">6.</span>See what's converting</h3>
   <p style="margin:10px 0;">A read-only dashboard shows leads over time, the share of leads converted from a lead to an opportunity, and the won rate across all opportunities (leads created directly as opportunities are shown as a separate count, as they skip the lead stage), a breakdown by campaign, and a ranking of your best performers. Lead counts follow the date each form was submitted on Meta, campaigns are grouped by their Meta ID, so two campaigns with the same name stay apart, and the figures cover the companies selected in the company switcher. System Health shows the webhook, the queue drain, the backfill and the token separately, each with a plain-language status such as <i>Running</i>, <i>Quiet</i> or <i>Falling behind</i>.</p>
   <figure style="margin:16px 0 4px;">
     <img src="screenshots/01-dashboard.jpg" alt="Leads analytics dashboard" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
-    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The analytics dashboard &mdash; volume, conversion and campaign performance.</figcaption>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">The analytics dashboard &mdash; volume, conversion, campaign performance and System Health.</figcaption>
   </figure>
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">7.</span>Keep an audit trail, and recover what fails</h3>
@@ -77,6 +81,10 @@
 
   <h3 style="font-size:17.5px;font-weight:600;color:#1b2027;margin:26px 0 6px;"><span style="color:#1f4e79;font-weight:700;margin-right:8px;">8.</span>Protect personal data</h3>
   <p style="margin:10px 0;">Meta form answers follow the lead's access rules, so a salesperson who can't open a lead can't read its answers either, and answers are shown as text, not HTML. A Meta Admin can press <b>Erase Personal Data</b> on a Meta lead, or on up to 200 selected in the Leads or Pipeline list, to remove the contact details, mapped answers, the Meta answer block and the stored Meta payloads; the stage, salesperson, revenue and campaign attribution stay. Under <b>Data retention</b>, you choose how long processed sync and webhook rows are kept (14 days by default), and how long failed webhook rows and the stored Meta data of failed sync rows are kept (90 days by default).</p>
+  <figure style="margin:16px 0 4px;">
+    <img src="screenshots/08-erase-personal-data.jpg" alt="Erase Personal Data confirmation on a Meta lead" style="display:block;width:100%;border:1px solid #dcdfe4;border-radius:4px;"/>
+    <figcaption style="font-size:13px;color:#7c848d;font-style:italic;margin-top:8px;">Erase Personal Data asks for confirmation first, and says what is removed and what stays.</figcaption>
+  </figure>
 
   <h2 style="font-size:21px;font-weight:700;color:#15191e;margin:40px 0 4px;padding-bottom:7px;border-bottom:1px solid #e6e9ec;">Details</h2>
   <div style="display:flex;flex-wrap:wrap;gap:34px;">
