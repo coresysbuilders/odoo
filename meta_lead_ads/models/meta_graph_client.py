@@ -108,21 +108,23 @@ def _buc_minutes(buc_header, object_id=None):
     return max(minutes) if minutes else None
 
 
+# One lazily created Session per process. It never carries headers, cookies
+# or the token (that goes in per-call params), so sharing it across threads
+# is safe and we keep connection pooling. It lives here, not on the model
+# class, because Odoo's test runner refuses attributes set on model classes.
+_SESSION = None
+
+
 class MetaGraphClient(models.AbstractModel):
     _name = 'meta.graph.client'
     _description = 'Meta Graph API transport (pinned version, isolated outbound HTTP)'
 
-    # One lazily created Session per process. It never carries headers, cookies
-    # or the token (that goes in per-call params), so sharing it across threads
-    # is safe and we keep connection pooling.
-    _session = None
-
     @api.model
     def _get_session(self):
-        cls = type(self)
-        if cls._session is None:
-            cls._session = requests.Session()
-        return cls._session
+        global _SESSION
+        if _SESSION is None:
+            _SESSION = requests.Session()
+        return _SESSION
 
     @api.model
     def _request(self, token, path, params=None, method='GET',
@@ -146,6 +148,11 @@ class MetaGraphClient(models.AbstractModel):
                 'Unsafe Graph path; callers must pass a bare path, not a full '
                 'URL, query string, fragment, path traversal, percent-encoding, '
                 'or whitespace-bearing value.')
+
+        # A Page Meta listed without a token has none stored. Report that as
+        # an auth problem, which needs a reconnect, not as a crash.
+        if not token:
+            raise MetaAuthError('No access token is stored for this call.')
 
         url = '%s/%s/%s' % (GRAPH_BASE, const.GRAPH_VERSION, path.lstrip('/'))
 
@@ -408,12 +415,15 @@ class MetaGraphClient(models.AbstractModel):
             call_params['after'] = after
 
     @api.model
-    def discover_pages(self, user_token, app_secret=None):
-        """GET /me/accounts: list the user's Pages, each with its own token."""
+    def discover_pages(self, user_token, app_secret=None, status=None):
+        """GET /me/accounts: list the user's Pages, each with its own token.
+
+        Pass a dict as ``status`` to learn whether the listing was cut short
+        (see _iter_paged)."""
         return list(self._iter_paged(
             user_token, 'me/accounts',
             params={'fields': 'id,name,access_token,category,tasks'},
-            app_secret=app_secret))
+            app_secret=app_secret, status=status))
 
     # ---- Page leadgen webhook subscription --------------------------------
     @api.model

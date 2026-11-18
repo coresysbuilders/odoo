@@ -71,6 +71,9 @@ RETENTION_MAX_DAYS = 3650
 # so the log cleanup can't erase them. A job writes each key at most once a
 # run, because every write clears the parameter cache on every worker.
 DRAIN_RUN_PARAM = 'meta_lead_ads.drain_last_run'
+# The drain runs every minute but refreshes its stamp at most this often.
+# Far below the 15 minutes after which the scheduler reads as stopped.
+DRAIN_STAMP_MINUTES = 5
 BACKFILL_RUN_PARAM = 'meta_lead_ads.backfill_last_run'
 # Last drain run that finished at least one webhook event, either ingested or
 # settled because the lead was removed in Odoo. Failures don't count.
@@ -242,3 +245,7 @@ RECONCILE_MIN_SLICE_HOURS = 1
 # of the other jobs because one lead can make up to five Graph calls (the
 # fetch plus four name lookups).
 BACKFILL_TIME_BUDGET = 45
+# Same reasoning for the webhook drain: it takes up to 50 events a run, each
+# one a lead read plus name lookups. Checked before each event and each name
+# lookup; events left over stay pending for the next run, a minute later.
+DRAIN_TIME_BUDGET = 45

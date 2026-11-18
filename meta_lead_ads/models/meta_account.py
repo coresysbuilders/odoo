@@ -201,16 +201,24 @@ class MetaAccount(models.Model):
         if secret:
             self._check_secret_target(*self._secret_targets(vals))
         if not (secret or 'company_id' in vals):
-            return super().write(vals)
-        # The company check runs before the secret is copied anywhere, and
-        # both share the write's savepoint: a refused company leaves every
-        # account as it was.
-        with self.env.cr.savepoint():
             res = super().write(vals)
-            if 'company_id' in vals and not self.env.su:
-                self._check_company_in_user_companies()
-            if secret:
-                self._propagate_app_secret(secret)
+        else:
+            # The company check runs before the secret is copied anywhere,
+            # and both share the write's savepoint: a refused company leaves
+            # every account as it was.
+            with self.env.cr.savepoint():
+                res = super().write(vals)
+                if 'company_id' in vals and not self.env.su:
+                    self._check_company_in_user_companies()
+                if secret:
+                    self._propagate_app_secret(secret)
+        if 'active' in vals and not vals['active']:
+            # An archived account must stop syncing. Its Pages are archived
+            # too, so the sweep skips them and the drain holds their leads.
+            # Connecting the account again brings the Pages and the held
+            # leads back.
+            self.env['meta.page'].sudo().search(
+                [('account_id', 'in', self.ids)]).write({'active': False})
         return res
 
     def web_save(self, vals, specification, next_id=None):
@@ -744,11 +752,23 @@ class MetaAccount(models.Model):
     # These helpers detect that and tell the admin what to fix.
     # ------------------------------------------------------------------ #
     @api.model
-    def _stamp_cron_run(self, key, when=None):
+    def _stamp_cron_run(self, key, when=None, min_gap=None):
         """Record ``when`` (default now) under ``key``, one of the health
-        stamps in const."""
-        self.env['ir.config_parameter'].sudo().set_param(
-            key, fields.Datetime.to_string(when or fields.Datetime.now()))
+        stamps in const.
+
+        With ``min_gap`` (a timedelta) a stamp younger than that is left as
+        it is: every write clears the parameter cache on every worker, and
+        the drain runs every minute."""
+        ICP = self.env['ir.config_parameter'].sudo()
+        when = when or fields.Datetime.now()
+        if min_gap:
+            try:
+                last = fields.Datetime.to_datetime(ICP.get_param(key))
+            except (TypeError, ValueError):
+                last = None
+            if last and timedelta(0) <= when - last < min_gap:
+                return
+        ICP.set_param(key, fields.Datetime.to_string(when))
 
     @api.model
     def _scheduler_health(self):

@@ -58,3 +58,4 @@ from . import test_promotion_ownership
 from . import test_uninstall_hook
 from . import test_published_claims
 from . import test_hygiene
+from . import test_sync_guards

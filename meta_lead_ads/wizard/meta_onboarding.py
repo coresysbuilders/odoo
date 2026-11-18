@@ -498,6 +498,10 @@ class MetaOnboarding(models.TransientModel):
             if not page.active:
                 changes['pages_reactivated'] = (
                     changes.get('pages_reactivated', 0) + 1)
+            # Meta leaves the token out for some Pages. Keep the one we have
+            # rather than wiping a working token.
+            if not access_token:
+                pvals.pop('access_token')
             # The account is the admin's own, but its Page may send leads to
             # a company the admin can't see, so refresh it as sudo. Only
             # Meta-owned fields; the company override and manual edits stay.
@@ -513,12 +517,14 @@ class MetaOnboarding(models.TransientModel):
         return Page.create(pvals)
 
     @api.model
-    def _reconcile_pages(self, account, discovered, selected_ids=None):
+    def _reconcile_pages(self, account, discovered, selected_ids=None,
+                         complete=True):
         """Sync pages with what Meta returned.
 
         Selected pages are created or updated. Pages Meta no longer returns are
-        archived, never deleted. Pages that still exist but weren't selected
-        this time are left as they are.
+        archived, never deleted, but only when ``complete`` says the listing
+        was read to the end. Pages that still exist but weren't selected this
+        time are left as they are.
         """
         Page = self.env['meta.page']
         if selected_ids is None:
@@ -530,6 +536,9 @@ class MetaOnboarding(models.TransientModel):
                 continue
             self._get_or_create_page(account, pid, p.get('name'),
                                      p.get('access_token'))
+        if not complete:
+            # A cut-short listing leaves Pages out that still exist.
+            return
         # sudo so Pages of this account that send leads to another company
         # are archived too.
         Page.sudo().search([('account_id', '=', account.id),
@@ -699,8 +708,10 @@ class MetaOnboarding(models.TransientModel):
             # Before the Pages are listed, so another app's token lists
             # nothing and never reaches the account.
             app_id = self._check_token_app(data)
+            pages_status = {}
             fresh_pages = client.discover_pages(self.access_token,
-                                                app_secret=self.app_secret)
+                                                app_secret=self.app_secret,
+                                                status=pages_status)
         except MetaAuthError:
             raise UserError(_("That token expired before onboarding could "
                               "finish. Go back and re-validate with a current "
@@ -774,7 +785,8 @@ class MetaOnboarding(models.TransientModel):
                                   reactivate_ids=reactivate_ids,
                                   changes=changes)
         selected_ids = {pl.page_id for pl in selected}
-        self._reconcile_pages(account, fresh_pages, selected_ids=selected_ids)
+        self._reconcile_pages(account, fresh_pages, selected_ids=selected_ids,
+                              complete=not pages_status.get('truncated'))
         self.account_id = account.id
         self.write({
             'is_update': bool(changes.get('existing')),

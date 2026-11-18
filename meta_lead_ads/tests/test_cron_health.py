@@ -841,9 +841,9 @@ class TestWebhookHealth(_HealthHelpers, WebhookDrainFixtureMixin,
         original = cls._stamp_cron_run
         calls = []
 
-        def spy(rec, *args):
+        def spy(rec, *args, **kwargs):
             calls.append(args)
-            return original(rec, *args)
+            return original(rec, *args, **kwargs)
 
         lead = self._fake_lead()
         during = []

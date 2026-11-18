@@ -232,7 +232,9 @@ class MetaWebhookEvent(models.Model):
         # Record that the drain ran, so the account form can show a stalled
         # cron instead of sync quietly stopping. Stamped before the pause
         # check: a paused run still shows the scheduler works.
-        self.env['meta.account']._stamp_cron_run(const.DRAIN_RUN_PARAM)
+        self.env['meta.account']._stamp_cron_run(
+            const.DRAIN_RUN_PARAM,
+            min_gap=timedelta(minutes=const.DRAIN_STAMP_MINUTES))
         # Closes failure rows that another transaction wrote after the lead
         # had already been created. It makes no Graph call, so it runs even
         # while Meta is throttling.
@@ -296,13 +298,21 @@ class MetaWebhookEvent(models.Model):
         # Whether any event was finished this run, for the webhook stamp.
         processed = False
         Page = self.env['meta.page'].with_context(active_test=False)
+        # A run killed at the cron time limit rolls back every event it
+        # finished, and the next run would pick the same ones again.
+        deadline = _monotonic() + const.DRAIN_TIME_BUDGET
         for event in self.browse(ids):
+            if _monotonic() >= deadline:
+                _logger.info("meta_webhook drain: time budget used; the "
+                             "remaining events wait for the next run")
+                break
             if event.page_id in paused_pages:
                 continue
             scope = None
             try:
                 with self.env.cr.savepoint():
-                    scope = event._process_one(lookup_states=lookup_states)
+                    scope = event._process_one(lookup_states=lookup_states,
+                                               deadline=deadline)
             except Exception:
                 # Expected Meta errors are handled in _process_one. Anything
                 # else fails just this event and the loop carries on.
@@ -848,7 +858,7 @@ class MetaWebhookEvent(models.Model):
             minutes = RATE_LIMIT_MAX_MINUTES
         return now + timedelta(minutes=math.ceil(minutes))
 
-    def _process_one(self, lookup_states=None):
+    def _process_one(self, lookup_states=None, deadline=None):
         """Send one event through ingest_leadgen.
 
         A rate limit leaves it pending without counting an attempt, sets
@@ -859,7 +869,9 @@ class MetaWebhookEvent(models.Model):
         sync-log row is written only when the event fails for good.
         Exception text is already redacted, so it is safe to store.
         ``lookup_states`` maps a Page to the name lookup state shared by the
-        whole drain run; without it each event starts fresh.
+        whole drain run; without it each event starts fresh. ``deadline``
+        (a time.monotonic value) stops name lookups once the run is out of
+        time; the lead is then flagged and the retry job fills the names.
         Returns 'page' or 'app' for the reach of a rate limit, else None.
         """
         self.ensure_one()
@@ -896,6 +908,10 @@ class MetaWebhookEvent(models.Model):
             return
         state = (lookup_states.setdefault(page.id, {})
                  if lookup_states is not None else None)
+        if deadline is not None:
+            if state is None:
+                state = {}
+            state['deadline'] = deadline
         try:
             lead = self.env['meta.lead.ingest'].ingest_leadgen(
                 page, self.leadgen_id, trigger='webhook',
