@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <data noupdate="1">
+    <!-- Facebook and Instagram are not created here: Odoo 20 ships
+         utm.utm_source_facebook and utm.utm_source_instagram, and a second
+         one would be renamed "Instagram [2]". A database upgraded from an
+         older version keeps the module's own Instagram source, which ingest
+         goes on using. Odoo has no "Paid Social" medium, so we add that. -->
+    <record id="utm_medium_paid_social" model="utm.medium">
+      <field name="name">Paid Social</field>
+    </record>
+  </data>
+</odoo>

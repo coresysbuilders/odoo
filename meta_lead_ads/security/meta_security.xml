@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!-- Groups hang off a res.groups.privilege, which in turn points to the
+         module category. -->
+    <record id="module_category_meta" model="ir.module.category">
+        <field name="name">Meta</field>
+        <field name="description">Meta Lead Ads integration access</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <record id="res_groups_privilege_meta" model="res.groups.privilege">
+        <field name="name">Meta Lead Ads</field>
+        <field name="sequence">20</field>
+        <field name="category_id" ref="module_category_meta"/>
+    </record>
+
+    <record id="group_meta_user" model="res.groups">
+        <field name="name">Meta User</field>
+        <field name="privilege_id" ref="res_groups_privilege_meta"/>
+    </record>
+
+    <record id="group_meta_admin" model="res.groups">
+        <field name="name">Meta Admin</field>
+        <field name="privilege_id" ref="res_groups_privilege_meta"/>
+        <field name="implied_ids" eval="[(4, ref('group_meta_user'))]"/>
+    </record>
+
+    <!-- Access rights and record rules live in ir.access.csv. Odoo 20 merged
+         ir.model.access and ir.rule into ir.access: rows with a group grant
+         access and are OR-ed together, rows without a group restrict every
+         user.
+
+         - Onboarding wizards hold the App Secret and token while in progress,
+           so a Meta Admin only sees their own.
+         - Company rows have no group, like crm's own company rule. Ingest,
+           crons and the webhook run privileged.
+         - A sync log row without a company is shared only while it holds no
+           payload. Rows without a company are seen by every company, so only
+           privileged code may create, change or delete them.
+         - Removed leads without a company come from before links were kept,
+           so only Settings administrators see them.
+         - Answers follow their lead through the 'access' operator: whoever
+           can read the lead reads its answers, including through crm.lead
+           rules added by other modules. A Meta group alone gives nothing. -->
+</odoo>

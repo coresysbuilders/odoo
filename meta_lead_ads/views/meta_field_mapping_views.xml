@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!-- meta_mapping_list only adds a banner above the rows when some
+         mappings were turned off; editing works as in a plain list. -->
+    <record id="meta_field_mapping_view_list" model="ir.ui.view">
+        <field name="name">meta.field.mapping.list</field>
+        <field name="model">meta.field.mapping</field>
+        <field name="arch" type="xml">
+            <list editable="bottom" js_class="meta_mapping_list"
+                  decoration-muted="not active" open_form_view="1">
+                <field name="meta_key"/>
+                <field name="crm_field_name" required="1"
+                       widget="meta_target_selection"/>
+                <field name="crm_field_type"/>
+                <field name="date_format"
+                       invisible="crm_field_type not in ('date', 'datetime')"/>
+                <field name="form_id"/>
+                <!-- Both are whole sentences, so they wrap instead of being
+                     cut off. The note gets a fixed width, or it squeezes the
+                     reason column next to it. -->
+                <field name="target_note" string="Note" readonly="1"
+                       optional="show" decoration-muted="1" width="220px"
+                       class="text-wrap"/>
+                <field name="disabled_reason" readonly="1" optional="show"
+                       class="text-wrap"/>
+                <field name="active" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="meta_field_mapping_view_form" model="ir.ui.view">
+        <field name="name">meta.field.mapping.form</field>
+        <field name="model">meta.field.mapping</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <widget name="web_ribbon" title="Disabled"
+                            bg_color="text-bg-warning" invisible="active"/>
+                    <field name="active" invisible="1"/>
+                    <group>
+                        <field name="form_id"/>
+                        <field name="meta_key"/>
+                        <field name="crm_field_name" required="1"
+                               widget="meta_target_selection"/>
+                        <field name="crm_field_type"/>
+                        <field name="date_format"
+                               invisible="crm_field_type not in ('date', 'datetime')"/>
+                    </group>
+                    <div class="alert alert-warning" role="alert"
+                         invisible="active or not disabled_reason">
+                        <field name="disabled_reason" nolabel="1" readonly="1"/>
+                        Answers to this question are still saved on each lead,
+                        under Meta Answers.
+                    </div>
+                    <div class="alert alert-info" role="status"
+                         invisible="not target_note">
+                        <field name="target_note" nolabel="1" readonly="1"/>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Odoo adds no Archived filter on its own, so Disabled is the one way
+         to list archived rows. The target is searched on the record field,
+         since the name picker isn't stored; only users who may read field
+         definitions get it, otherwise the search would fail on access. -->
+    <record id="meta_field_mapping_view_search" model="ir.ui.view">
+        <field name="name">meta.field.mapping.search</field>
+        <field name="model">meta.field.mapping</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="meta_key"/>
+                <field name="form_id"/>
+                <field name="crm_field_id" string="CRM Lead Field"
+                       groups="base.group_erp_manager"/>
+                <filter name="filter_disabled" string="Disabled"
+                        domain="[('active', '=', False)]"/>
+                <group>
+                    <filter name="groupby_form" string="Form"
+                            context="{'group_by': 'form_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+</odoo>

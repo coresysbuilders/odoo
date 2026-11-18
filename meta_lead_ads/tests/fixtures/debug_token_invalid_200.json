@@ -1,0 +1,1 @@
+{"data": {"app_id": "100000000000001", "type": "USER", "application": "Acme Leads", "is_valid": false, "scopes": [], "error": {"code": 190, "subcode": 463, "message": "Error validating access token: the user has not authorized application."}}}

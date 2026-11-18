@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo. (c) 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<templates xml:space="preserve">
+
+    <!-- The count covers every form the user can read, or only the open
+         form in a per-form list, not just the rows this search shows. The
+         tooltip says which. -->
+    <t t-name="meta_lead_ads.MappingListRenderer" t-inherit="web.ListRenderer" t-inherit-mode="primary">
+        <xpath expr="//div[hasclass('o_list_renderer')]" position="before">
+            <div t-if="this.bannerState.disabledCount" class="alert alert-warning mb-2" role="alert"
+                 t-att-title="this.bannerTitle">
+                Some mappings were turned off because their fields can no longer be filled from a form answer. The answers are still saved on each lead. Use the Disabled filter to see them and why.
+            </div>
+        </xpath>
+    </t>
+
+</templates>

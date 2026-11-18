@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!--
+        Leads Analytics Dashboard: a top-level "Meta Leads" app for Meta admins.
+        get_dashboard_metrics checks the group again on the server, since menu
+        groups only hide the entry.
+    -->
+
+    <!-- The tag must match the registry key in static/src/dashboard/dashboard.js. -->
+    <record id="meta_dashboard_action" model="ir.actions.client">
+        <field name="name">Meta Leads Dashboard</field>
+        <field name="tag">meta_lead_ads.dashboard</field>
+    </record>
+
+    <!-- No parent plus a web_icon makes this show up as an app on the home
+         screen. -->
+    <menuitem id="menu_meta_leads_root"
+              name="Meta Leads"
+              web_icon="meta_lead_ads,static/description/icon.png"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="50"/>
+
+    <menuitem id="menu_meta_leads_dashboard"
+              name="Dashboard"
+              parent="menu_meta_leads_root"
+              action="meta_dashboard_action"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="10"/>
+
+    <!-- The Meta settings for Meta admins who can't open Settings. -->
+    <menuitem id="menu_meta_leads_settings"
+              name="Settings"
+              parent="menu_meta_leads_root"
+              action="meta_settings_only_action"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="90"/>
+</odoo>

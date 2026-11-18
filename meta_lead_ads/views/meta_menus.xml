@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!-- These actions no longer have CRM menu entries; the Settings page
+         buttons open them. The old menus are deleted in meta_settings_menu.xml. -->
+    <record id="meta_account_action" model="ir.actions.act_window">
+        <field name="name">Meta Accounts</field>
+        <field name="res_model">meta.account</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="meta_sync_log_action" model="ir.actions.act_window">
+        <field name="name">Sync Logs</field>
+        <field name="res_model">meta.sync.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

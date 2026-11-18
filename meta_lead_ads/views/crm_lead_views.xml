@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+  <record id="crm_lead_view_form_meta" model="ir.ui.view">
+    <field name="name">crm.lead.form.meta.attribution</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.crm_lead_view_form"/>
+    <field name="arch" type="xml">
+      <!-- Still shown once erased: a merge or a salesperson can put
+           personal data back, and erasing again clears it. Also shown on
+           a lead Meta leads were merged into. -->
+      <xpath expr="//header" position="inside">
+        <field name="meta_holds_merged_leads" invisible="1"
+               groups="meta_lead_ads.group_meta_admin"/>
+        <button name="action_meta_erase_personal_data" type="object"
+                string="Erase Personal Data"
+                groups="meta_lead_ads.group_meta_admin"
+                invisible="not meta_leadgen_id and not meta_holds_merged_leads"
+                confirm="Erase the personal data of the selected Meta leads, and of Meta leads merged into them? Contact details, mapped answers, the Meta answer block, crm's merge notes and the stored Meta payloads are removed, also when they were typed in or merged in after an earlier erase. On a lead that wasn't a Meta lead itself, only the fields recorded as brought over by a merge from a Meta lead are cleared, unless the stored Meta data shows the value was changed since. Where Odoo has no record of the merge, a field is cleared only when its value is found in the stored Meta data. Fields kept this way are named in the note left on the lead. The stored Meta data is kept only for the sync log retention period, 14 days by default. Stage, salesperson, revenue and campaign attribution stay. The linked contact and hand-written messages are not changed. At most 200 leads at a time. This can't be undone."/>
+      </xpath>
+      <xpath expr="//sheet/group" position="after">
+        <div class="alert alert-warning" role="alert"
+             invisible="not meta_attribution_pending">
+          Some Meta names (campaign, ad set, ad or form) could not be read
+          when this lead arrived. The raw Meta IDs are shown below. Odoo asks
+          Meta again every 30 minutes and stops after 10 failed tries; tries
+          also pause for a few hours when Meta refuses the Page's token. Once
+          the Page connection works again, a Meta Admin can restart the tries.
+          <button name="action_reset_meta_attribution_retry" type="object"
+                  string="Restart name retries" class="btn-link p-0"
+                  groups="meta_lead_ads.group_meta_admin"/>
+        </div>
+        <group string="Meta Attribution" name="meta_attribution"
+               invisible="not meta_leadgen_id">
+          <field name="meta_attribution_pending" invisible="1"/>
+          <field name="meta_platform" readonly="1"/>
+          <field name="meta_submitted_at" readonly="1"/>
+          <field name="meta_campaign_name" readonly="1"/>
+          <field name="meta_campaign_id" readonly="1"
+                 invisible="not meta_attribution_pending"/>
+          <field name="meta_adset_name" readonly="1"/>
+          <field name="meta_adset_id" readonly="1"
+                 invisible="not meta_attribution_pending"/>
+          <field name="meta_ad_name" readonly="1"/>
+          <field name="meta_ad_id" readonly="1"
+                 invisible="not meta_attribution_pending"/>
+          <field name="meta_form_name" readonly="1"/>
+          <field name="meta_form_id" readonly="1"
+                 invisible="not meta_attribution_pending"/>
+          <field name="meta_page_name" readonly="1"/>
+          <field name="meta_leadgen_id" readonly="1"/>
+          <field name="meta_personal_data_erased_at" readonly="1"
+                 invisible="not meta_personal_data_erased_at"/>
+          <field name="meta_form_id_ref" readonly="1"
+                 groups="meta_lead_ads.group_meta_user,meta_lead_ads.group_meta_admin"/>
+          <field name="meta_page_id_ref" readonly="1"
+                 groups="meta_lead_ads.group_meta_user,meta_lead_ads.group_meta_admin"/>
+          <field name="meta_account_id" readonly="1"
+                 groups="meta_lead_ads.group_meta_user,meta_lead_ads.group_meta_admin"/>
+        </group>
+      </xpath>
+      <xpath expr="//notebook" position="inside">
+        <!-- Answers follow the lead's access through record rules, so
+             anyone who can open the lead sees them. A lead that isn't a
+             Meta lead holds answers when Meta leads were merged into it. -->
+        <page string="Meta Answers" name="meta_answers"
+              invisible="not meta_leadgen_id and not answer_ids">
+          <field name="answer_ids" readonly="1">
+            <list>
+              <field name="label"/>
+              <field name="question_key"/>
+              <field name="value"/>
+              <button name="action_promote_to_field" type="object"
+                      string="Promote to Field" icon="wand_stars"
+                      groups="meta_lead_ads.group_meta_admin"/>
+            </list>
+          </field>
+        </page>
+      </xpath>
+      <!-- The notebook only renders pages, so the anchor for promoted
+           fields needs its own. They are plain lead fields, so every CRM
+           user sees it. -->
+      <xpath expr="//page[@name='meta_answers']" position="after">
+        <page string="Meta Custom Fields" name="meta_custom_fields_page"
+              invisible="not meta_leadgen_id">
+          <group name="meta_custom_fields"/>
+        </page>
+      </xpath>
+    </field>
+  </record>
+
+  <!-- Erase from the Leads and Pipeline lists. Both stock lists already
+       have a header. -->
+  <record id="crm_lead_view_list_leads_meta_erase" model="ir.ui.view">
+    <field name="name">crm.lead.list.leads.meta.erase</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.crm_case_tree_view_leads"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_meta_erase_personal_data" type="object"
+                string="Erase Personal Data"
+                groups="meta_lead_ads.group_meta_admin"
+                confirm="Erase the personal data of the selected Meta leads, and of Meta leads merged into them? Contact details, mapped answers, the Meta answer block, crm's merge notes and the stored Meta payloads are removed, also when they were typed in or merged in after an earlier erase. On a lead that wasn't a Meta lead itself, only the fields recorded as brought over by a merge from a Meta lead are cleared, unless the stored Meta data shows the value was changed since. Where Odoo has no record of the merge, a field is cleared only when its value is found in the stored Meta data. Fields kept this way are named in the note left on the lead. The stored Meta data is kept only for the sync log retention period, 14 days by default. Stage, salesperson, revenue and campaign attribution stay. The linked contact and hand-written messages are not changed. At most 200 leads at a time. This can't be undone."/>
+      </xpath>
+      <xpath expr="//list" position="inside">
+        <field name="meta_personal_data_erased_at" optional="hide"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="crm_lead_view_list_oppor_meta_erase" model="ir.ui.view">
+    <field name="name">crm.lead.list.opportunities.meta.erase</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.crm_case_tree_view_oppor"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button name="action_meta_erase_personal_data" type="object"
+                string="Erase Personal Data"
+                groups="meta_lead_ads.group_meta_admin"
+                confirm="Erase the personal data of the selected Meta leads, and of Meta leads merged into them? Contact details, mapped answers, the Meta answer block, crm's merge notes and the stored Meta payloads are removed, also when they were typed in or merged in after an earlier erase. On a lead that wasn't a Meta lead itself, only the fields recorded as brought over by a merge from a Meta lead are cleared, unless the stored Meta data shows the value was changed since. Where Odoo has no record of the merge, a field is cleared only when its value is found in the stored Meta data. Fields kept this way are named in the note left on the lead. The stored Meta data is kept only for the sync log retention period, 14 days by default. Stage, salesperson, revenue and campaign attribution stay. The linked contact and hand-written messages are not changed. At most 200 leads at a time. This can't be undone."/>
+      </xpath>
+      <xpath expr="//list" position="inside">
+        <field name="meta_personal_data_erased_at" optional="hide"/>
+      </xpath>
+    </field>
+  </record>
+
+  <!-- Same Meta filters and group-bys on the Leads, Pipeline and Pipeline
+       Analysis search views. Group-bys go after the stock "Source" one, which
+       all three views have. -->
+  <record id="crm_lead_view_search_meta_leads" model="ir.ui.view">
+    <field name="name">crm.lead.search.meta.leads</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.view_crm_case_leads_filter"/>
+    <field name="arch" type="xml">
+      <xpath expr="//search" position="inside">
+        <field name="meta_campaign_name"/>
+        <field name="meta_adset_name"/>
+        <field name="meta_ad_name"/>
+        <field name="meta_form_name"/>
+        <separator/>
+        <filter string="Meta Leads" name="filter_meta_leads"
+                domain="[('meta_leadgen_id', '!=', False)]"/>
+        <filter string="Attribution Pending"
+                name="filter_meta_attribution_pending"
+                domain="[('meta_attribution_pending', '=', True)]"/>
+        <filter string="Facebook" name="filter_meta_facebook"
+                domain="[('meta_platform', '=', 'facebook')]"/>
+        <filter string="Instagram" name="filter_meta_instagram"
+                domain="[('meta_platform', '=', 'instagram')]"/>
+        <filter string="Meta Submitted On" name="filter_meta_submitted_at"
+                date="meta_submitted_at"/>
+      </xpath>
+      <xpath expr="//filter[@name='source']" position="after">
+        <filter string="Meta Platform" name="groupby_meta_platform"
+                context="{'group_by': 'meta_platform'}"/>
+        <filter string="Meta Campaign" name="groupby_meta_campaign"
+                context="{'group_by': 'meta_campaign_name'}"/>
+        <filter string="Meta Ad Set" name="groupby_meta_adset"
+                context="{'group_by': 'meta_adset_name'}"/>
+        <filter string="Meta Ad" name="groupby_meta_ad"
+                context="{'group_by': 'meta_ad_name'}"/>
+        <filter string="Meta Form" name="groupby_meta_form"
+                context="{'group_by': 'meta_form_name'}"/>
+        <filter string="Meta Submitted On" name="groupby_meta_submitted_at"
+                context="{'group_by': 'meta_submitted_at:day'}"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="crm_lead_view_search_meta_opportunities" model="ir.ui.view">
+    <field name="name">crm.lead.search.meta.opportunities</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.view_crm_case_opportunities_filter"/>
+    <field name="arch" type="xml">
+      <xpath expr="//search" position="inside">
+        <field name="meta_campaign_name"/>
+        <field name="meta_adset_name"/>
+        <field name="meta_ad_name"/>
+        <field name="meta_form_name"/>
+        <separator/>
+        <filter string="Meta Leads" name="filter_meta_leads"
+                domain="[('meta_leadgen_id', '!=', False)]"/>
+        <filter string="Attribution Pending"
+                name="filter_meta_attribution_pending"
+                domain="[('meta_attribution_pending', '=', True)]"/>
+        <filter string="Facebook" name="filter_meta_facebook"
+                domain="[('meta_platform', '=', 'facebook')]"/>
+        <filter string="Instagram" name="filter_meta_instagram"
+                domain="[('meta_platform', '=', 'instagram')]"/>
+        <filter string="Meta Submitted On" name="filter_meta_submitted_at"
+                date="meta_submitted_at"/>
+      </xpath>
+      <xpath expr="//filter[@name='source']" position="after">
+        <filter string="Meta Platform" name="groupby_meta_platform"
+                context="{'group_by': 'meta_platform'}"/>
+        <filter string="Meta Campaign" name="groupby_meta_campaign"
+                context="{'group_by': 'meta_campaign_name'}"/>
+        <filter string="Meta Ad Set" name="groupby_meta_adset"
+                context="{'group_by': 'meta_adset_name'}"/>
+        <filter string="Meta Ad" name="groupby_meta_ad"
+                context="{'group_by': 'meta_ad_name'}"/>
+        <filter string="Meta Form" name="groupby_meta_form"
+                context="{'group_by': 'meta_form_name'}"/>
+        <filter string="Meta Submitted On" name="groupby_meta_submitted_at"
+                context="{'group_by': 'meta_submitted_at:day'}"/>
+      </xpath>
+    </field>
+  </record>
+
+  <record id="crm_lead_view_search_meta_analysis" model="ir.ui.view">
+    <field name="name">crm.lead.search.meta.analysis</field>
+    <field name="model">crm.lead</field>
+    <field name="inherit_id" ref="crm.crm_opportunity_report_view_search"/>
+    <field name="arch" type="xml">
+      <xpath expr="//search" position="inside">
+        <field name="meta_campaign_name"/>
+        <field name="meta_adset_name"/>
+        <field name="meta_ad_name"/>
+        <field name="meta_form_name"/>
+        <separator/>
+        <filter string="Meta Leads" name="filter_meta_leads"
+                domain="[('meta_leadgen_id', '!=', False)]"/>
+        <filter string="Attribution Pending"
+                name="filter_meta_attribution_pending"
+                domain="[('meta_attribution_pending', '=', True)]"/>
+        <filter string="Facebook" name="filter_meta_facebook"
+                domain="[('meta_platform', '=', 'facebook')]"/>
+        <filter string="Instagram" name="filter_meta_instagram"
+                domain="[('meta_platform', '=', 'instagram')]"/>
+        <filter string="Meta Submitted On" name="filter_meta_submitted_at"
+                date="meta_submitted_at"/>
+      </xpath>
+      <xpath expr="//filter[@name='source']" position="after">
+        <filter string="Meta Platform" name="groupby_meta_platform"
+                context="{'group_by': 'meta_platform'}"/>
+        <filter string="Meta Campaign" name="groupby_meta_campaign"
+                context="{'group_by': 'meta_campaign_name'}"/>
+        <filter string="Meta Ad Set" name="groupby_meta_adset"
+                context="{'group_by': 'meta_adset_name'}"/>
+        <filter string="Meta Ad" name="groupby_meta_ad"
+                context="{'group_by': 'meta_ad_name'}"/>
+        <filter string="Meta Form" name="groupby_meta_form"
+                context="{'group_by': 'meta_form_name'}"/>
+        <filter string="Meta Submitted On" name="groupby_meta_submitted_at"
+                context="{'group_by': 'meta_submitted_at:day'}"/>
+      </xpath>
+    </field>
+  </record>
+</odoo>

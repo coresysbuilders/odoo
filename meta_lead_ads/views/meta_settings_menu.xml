@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Meta Lead Ads Integration for Odoo — © 2026 CoreSys Builders. All rights reserved.
+    Licensed under the Odoo Proprietary License v1.0 (OPL-1). Unauthorized copying,
+    redistribution, or resale, in whole or in part, via any medium, is prohibited.
+-->
+<odoo>
+    <!--
+        Settings entry points. res_config_settings_views.xml loads after this
+        file because its buttons reference these actions with %(...)d.
+
+        The 18.x branch deletes its old CRM menus here. The 19.0 and 20.0 modules never
+        had them, so there is nothing to delete.
+    -->
+
+    <!-- All field mappings across forms. Without it they are only reachable
+         from each form's mapping tab. -->
+    <record id="meta_field_mapping_action" model="ir.actions.act_window">
+        <field name="name">Field Mappings</field>
+        <field name="res_model">meta.field.mapping</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="meta_field_mapping_view_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">No field mappings yet.</p>
+            <p>
+                Mappings tell Odoo which lead field each form question fills.
+                Open a lead form under Meta Lead Ads and add them on its Field
+                Mappings tab.
+            </p>
+        </field>
+    </record>
+
+    <!-- Odoo 19 dropped target 'inline'; like core, leave target unset. The
+         'module' context key must match <app name="..."> in
+         res_config_settings_views.xml or the section won't render. -->
+    <record id="meta_config_settings_action" model="ir.actions.act_window">
+        <field name="name">Meta Lead Ads Settings</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="context">{'module': 'meta_lead_ads'}</field>
+    </record>
+
+    <!-- Settings menu entry, Meta admins only. -->
+    <menuitem id="menu_meta_config_settings"
+              name="Meta Lead Ads"
+              parent="base.menu_administration"
+              action="meta_config_settings_action"
+              groups="meta_lead_ads.group_meta_admin"
+              sequence="50"/>
+
+</odoo>
