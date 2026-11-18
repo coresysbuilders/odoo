@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timedelta
 from unittest import mock
 
+from lxml import etree
 from psycopg2 import IntegrityError
 from psycopg2.errors import SerializationFailure
 
@@ -1204,6 +1205,18 @@ class TestAttributionPending(IngestFixtureMixin, TransactionCase):
                       'meta_lead_ads.crm_lead_view_search_meta_analysis'):
             self.assertIn('filter_meta_attribution_pending',
                           self.env.ref(xmlid).arch_db)
+
+    def test_attribution_block_follows_the_contact_group(self):
+        # crm 20 opens the sheet with a phone-only group; the block belongs
+        # under the main one, the group holding the contact details.
+        form_view = self.env.ref('crm.crm_lead_view_form')
+        arch = etree.fromstring(self.env['crm.lead'].get_views(
+            [(form_view.id, 'form')])['views']['form']['arch'])
+        block = arch.xpath("//group[@name='meta_attribution']")[0]
+        main = arch.xpath("//sheet/group[group[@name='lead_partner']]")[0]
+        self.assertIs(block.getparent(), main.getparent())
+        siblings = list(block.getparent())
+        self.assertGreater(siblings.index(block), siblings.index(main))
 
     # ---- one stop per Page for a whole run ---------------------------------
 

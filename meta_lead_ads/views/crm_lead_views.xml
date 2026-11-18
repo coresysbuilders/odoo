@@ -22,7 +22,9 @@
                 invisible="not meta_leadgen_id and not meta_holds_merged_leads"
                 confirm="Erase the personal data of the selected Meta leads, and of Meta leads merged into them? Contact details, mapped answers, the Meta answer block, crm's merge notes and the stored Meta payloads are removed, also when they were typed in or merged in after an earlier erase. On a lead that wasn't a Meta lead itself, only the fields recorded as brought over by a merge from a Meta lead are cleared, unless the stored Meta data shows the value was changed since. Where Odoo has no record of the merge, a field is cleared only when its value is found in the stored Meta data. Fields kept this way are named in the note left on the lead. The stored Meta data is kept only for the sync log retention period, 14 days by default. Stage, salesperson, revenue and campaign attribution stay. The linked contact and hand-written messages are not changed. At most 200 leads at a time. This can't be undone."/>
       </xpath>
-      <xpath expr="//sheet/group" position="after">
+      <!-- crm 20 puts a phone-only group first in the sheet, so the main
+           group is found by the contact group it holds. -->
+      <xpath expr="//sheet/group[group[@name='lead_partner']]" position="after">
         <div class="alert alert-warning" role="alert"
              invisible="not meta_attribution_pending">
           Some Meta names (campaign, ad set, ad or form) could not be read
