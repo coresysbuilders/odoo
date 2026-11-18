@@ -120,6 +120,29 @@ class TestSecurity(TransactionCase):
         sys_arch = Settings.with_user(sys_only).get_view()['arch']
         self.assertNotIn('lead_name_template', sys_arch)
 
+    def test_settings_values_refused_without_settings_or_meta_admin(self):
+        """Users who are neither Settings nor Meta admins can't read the
+        stored settings, another app's or Meta's."""
+        found = _find_foreign_bool_param(self.env['res.config.settings'])
+        self.assertTrue(found, "no boolean setting of another module")
+        base_internal = self.env.ref('base.group_user')
+        salesman = self.env['res.users'].create({
+            'name': 'Sales Only', 'login': 'sec_sales_only',
+            'group_ids': [(6, 0, [
+                base_internal.id,
+                self.env.ref('sales_team.group_sale_salesman').id])]})
+        rights_admin = self.env['res.users'].create({
+            'name': 'Rights Only', 'login': 'sec_rights_only',
+            'group_ids': [(6, 0, [
+                base_internal.id,
+                self.env.ref('base.group_erp_manager').id])]})
+        Settings = self.env['res.config.settings']
+        for user in (salesman, rights_admin, self.meta_user):
+            for names in ([found[0]], ['lead_name_template']):
+                with self.subTest(user=user.login, fields=names), \
+                        self.assertRaises(AccessError):
+                    Settings.with_user(user).default_get(names)
+
     def test_non_system_meta_admin_cannot_mutate_foreign_setting(self):
         """A Meta admin without Settings rights saves the Meta values through the Save button.
 

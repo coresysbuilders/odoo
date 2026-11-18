@@ -154,20 +154,18 @@ class ResConfigSettings(models.TransientModel):
 
     @api.model
     def default_get(self, fields):
-        if self.env.is_system():
+        if not self._meta_only_caller():
+            # Core checks read access here, so anyone else without Settings
+            # rights is refused as before.
             return super().default_get(fields)
         # Every app reads its own settings here as the current user, and on
         # Odoo 20 mail reads ir.asset, which only Settings administrators
-        # may. So they are read as sudo: an Access Rights administrator can
-        # give themselves Settings anyway, and for a Meta-only admin all but
-        # the Meta values are dropped below.
+        # may. So a Meta-only admin's values are read as sudo, and all but
+        # the Meta ones are dropped right after: their record only carries
+        # the Meta values (execute saves nothing else for them). Another
+        # app's default would be written back by create(): hr's
+        # module_hr_attendance to the company, which they may not write.
         res = super(ResConfigSettings, self.sudo()).default_get(fields)
-        if not self._meta_only_caller():
-            return res
-        # Their record only carries the Meta values (execute saves nothing
-        # else for them). Another app's default would be written back by
-        # create(): hr's module_hr_attendance to the company, which they may
-        # not write.
         own = self._meta_own_values(res)
         # A required plain column still needs a value or the insert fails
         # (sale_stock's default_picking_policy). It stays on this record. The

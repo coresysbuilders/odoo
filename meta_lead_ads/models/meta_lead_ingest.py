@@ -1490,10 +1490,11 @@ class MetaLeadIngest(models.AbstractModel):
 
         Facebook and Instagram use the stock utm sources, except that a
         database upgraded from before Odoo 20 keeps the Instagram source
-        this module seeded then; medium is the seeded Paid Social. ``campaign_name`` is the
-        resolved name, preferred over the payload so cron-fetched leads that
-        lack the name in the payload still get a campaign. With
-        ``only_blank`` (match path) existing UTM values are kept."""
+        this module seeded then. Medium is the seeded Paid Social.
+        ``campaign_name`` is the resolved name, preferred over the payload so
+        cron-fetched leads that lack the name in the payload still get a
+        campaign. With ``only_blank`` (match path) existing UTM values are
+        kept."""
         platform = _PLATFORM.get((data.get('platform') or '').lower())
         if platform == 'facebook':
             source = self.env.ref('utm.utm_source_facebook',

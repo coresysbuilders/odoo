@@ -13,7 +13,7 @@
 // delete, a new search), so fixing the last row hides the banner without
 // reopening the menu. Opened from a form, it counts only that form's rows.
 //
-import { onWillDestroy, onWillStart, status, proxy } from "@odoo/owl";
+import { onWillDestroy, onWillStart, proxy, status } from "@odoo/owl";
 import { _t } from "@web/core/l10n/translation";
 import { registry } from "@web/core/registry";
 import { useBus, useService } from "@web/core/utils/hooks";

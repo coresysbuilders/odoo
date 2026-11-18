@@ -9,8 +9,8 @@
         Settings entry points. res_config_settings_views.xml loads after this
         file because its buttons reference these actions with %(...)d.
 
-        The 18.x branch deletes its old CRM menus here. The 19.0 and 20.0 modules never
-        had them, so there is nothing to delete.
+        The 18.x branch deletes its old CRM menus here. The 19.0 and 20.0
+        modules never had them, so there is nothing to delete.
     -->
 
     <!-- All field mappings across forms. Without it they are only reachable

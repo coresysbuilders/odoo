@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import lxml.html
 from lxml import etree
+from markupsafe import Markup
 
 from odoo import _, fields
 from odoo.exceptions import AccessError, UserError
@@ -442,6 +443,33 @@ class TestErase(EraseFixtureMixin, MultiCompanyFixtureMixin,
                           .mapped('body'))
         self.assertNotIn(meta_name, bodies)
         self.assertIn('Walk In Customer', bodies)
+
+    def test_tracking_blocks_leave_out_the_wrapper(self):
+        # Bare text shaped like a tracking line, as a message posted through
+        # the API can be, parses straight into the wrapper div.
+        Lead = self.env['crm.lead']
+        bare = lxml.html.fragment_fromstring(
+            'a → <b>x</b> <i>(Email)</i>', create_parent='div')
+        self.assertEqual(Lead._meta_tracking_blocks(bare), [])
+        rendered = self.env['ir.qweb']._render('mail.mail_tracking_template', {
+            'trackingValues': [{'old_value': 'a', 'new_value': 'x',
+                                'field_label': 'Email'}]})
+        root = lxml.html.fragment_fromstring(
+            str(rendered), create_parent='div')
+        self.assertEqual(
+            [line['field_label']
+             for _div, lines in Lead._meta_tracking_blocks(root)
+             for line in lines],
+            ['Email'])
+
+    def test_bare_tracking_text_does_not_stop_the_erase(self):
+        lead = self._ingest('LGER_BARE', self._contact(17))
+        message = lead.sudo().message_post(
+            body=Markup('a → <b>x</b> <i>(Email)</i>'),
+            message_type='comment')
+        self._erase(lead)
+        self.assertTrue(self._notes(lead))
+        self.assertTrue(message.exists())
 
     def test_merged_in_copies_cleared(self):
         first = self._ingest('LGER_MG1', self._contact(13))

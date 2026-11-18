@@ -821,9 +821,12 @@ class CrmLead(models.Model):
         """The tracking blocks in a parsed message body, each as
         (element, lines). A line is a dict with the keys the
         mail.mail_tracking_template reads. Anything not shaped exactly like
-        that template is not a tracking block and is left out."""
+        that template is not a tracking block and is left out, and so is
+        ``root`` itself, the wrapper the caller parsed the body into."""
         blocks = []
         for div in root.iter('div'):
+            if div is root:
+                continue
             children = list(div)
             if (div.attrib or not children
                     or any(not isinstance(c.tag, str)
